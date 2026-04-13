@@ -1,246 +1,111 @@
 """
 Fluent Interface Module
 =======================
-Handles all PyFluent API interactions including launching, connecting,
-and introspecting Fluent cases.
+Handles launching PyFluent and loading case files.
+All functions are GUI-agnostic.
 """
 
+import logging
 import sys
 from pathlib import Path
-from tkinter import Tk, filedialog
+from contextlib import contextmanager
+from io import StringIO
+
+logger = logging.getLogger(__name__)
 
 
-def open_case_file(user_settings, project_dir, ui_helpers):
-    """Open a Fluent case file with GUI."""
-    ui_helpers.print_header("OPEN FLUENT CASE FILE")
+@contextmanager
+def _redirect_to_file(log_file):
+    """Context manager to redirect stdout/stderr to a log file."""
+    original_stdout, original_stderr = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = log_file, log_file
+    try:
+        yield
+    finally:
+        sys.stdout, sys.stderr = original_stdout, original_stderr
 
-    # Use file dialog to select case file
-    print("\nOpening file dialog...")
-    Tk().withdraw()  # Hide tkinter root window
-    case_file = filedialog.askopenfilename(
-        title="Select Fluent Case File",
-        filetypes=[
-            ("Fluent Case Files", "*.cas *.cas.h5 *.cas.gz"),
-            ("All Files", "*.*")
-        ],
-        initialdir=str(project_dir)
-    )
 
-    if not case_file:
-        print("\n✗ No file selected")
-        ui_helpers.pause()
+def launch_fluent(case_file_path, solver_settings, log_dir=None):
+    """
+    Launch Fluent and load a case file.
+
+    Parameters
+    ----------
+    case_file_path : str or Path
+        Path to Fluent case file (.cas, .cas.h5, .cas.gz)
+    solver_settings : dict
+        Keys: precision, processor_count, dimension, use_gui
+    log_dir : Path, optional
+        Directory for Fluent log files. If None, logs are discarded.
+
+    Returns
+    -------
+    solver
+        PyFluent solver object, or None on failure
+    """
+    case_file_path = Path(case_file_path)
+    if not case_file_path.exists():
+        logger.error(f"Case file not found: {case_file_path}")
         return None
 
-    case_file = Path(case_file)
-    print(f"\n✓ Selected: {case_file.name}")
-    print(f"  Full path: {case_file}")
-
-    # Add to recent case files
-    user_settings.add_recent_case_file(case_file)
-
-    # Configure solver settings
-    settings = ui_helpers.configure_solver_settings(user_settings)
-    if settings is None:
-        print("\n✗ Launch cancelled by user")
-        ui_helpers.pause()
-        return None
-
-    # Launch Fluent
-    print("\nLaunching Fluent...")
-    print(f"  Precision: {settings['precision']}")
-    print(f"  Processors: {settings['processor_count']}")
-    print(f"  Dimension: {settings['dimension']}D")
-    print(f"  Mode: solver")
-    print(f"  GUI: {'Enabled' if settings['use_gui'] else 'Disabled'}")
-
+    log_file = None
     try:
         import ansys.fluent.core as pyfluent
         from ansys.fluent.core.launcher.launcher import UIMode
 
-        # Create log file for Fluent output
-        log_dir = project_dir / "fluent_logs"
-        log_dir.mkdir(exist_ok=True)
-        log_file_path = log_dir / f"fluent_launch_{case_file.stem}.log"
-        fluent_log_file = open(log_file_path, 'w', buffering=1)
+        # Set up logging
+        if log_dir:
+            log_dir = Path(log_dir)
+            log_dir.mkdir(exist_ok=True)
+            log_file_path = log_dir / f"fluent_launch_{case_file_path.stem}.log"
+            log_file = open(log_file_path, 'w', buffering=1)
+            logger.info(f"Fluent output redirected to: {log_file_path}")
+        else:
+            log_file = StringIO()
 
-        # Redirect stdout/stderr to suppress Fluent TUI output
-        original_stdout = sys.stdout
-        original_stderr = sys.stderr
-        sys.stdout = fluent_log_file
-        sys.stderr = fluent_log_file
+        ui_mode = UIMode.GUI if solver_settings.get('use_gui', False) else UIMode.NO_GUI_OR_GRAPHICS
 
-        # Determine UI mode
-        ui_mode = UIMode.GUI if settings['use_gui'] else UIMode.NO_GUI_OR_GRAPHICS
+        logger.info(f"Launching Fluent (precision={solver_settings['precision']}, "
+                     f"processors={solver_settings['processor_count']}, "
+                     f"dim={solver_settings['dimension']}D)")
 
-        solver = pyfluent.launch_fluent(
-            precision=settings['precision'],
-            processor_count=settings['processor_count'],
-            dimension=settings['dimension'],
-            mode="solver",
-            ui_mode=ui_mode
-        )
+        with _redirect_to_file(log_file):
+            solver = pyfluent.launch_fluent(
+                precision=solver_settings['precision'],
+                processor_count=solver_settings['processor_count'],
+                dimension=solver_settings['dimension'],
+                mode="solver",
+                ui_mode=ui_mode
+            )
 
-        # Restore stdout/stderr
-        sys.stdout = original_stdout
-        sys.stderr = original_stderr
+        logger.info(f"Fluent launched (version {solver.get_fluent_version()})")
+        logger.info(f"Loading case: {case_file_path.name}")
 
-        print(f"\n✓ Fluent launched (version {solver.get_fluent_version()})")
-        print(f"  Loading case file: {case_file.name}")
-        print(f"  Fluent output redirected to: {log_file_path.name}")
+        with _redirect_to_file(log_file):
+            solver.settings.file.read_case(file_name=str(case_file_path))
 
-        # Redirect during case loading
-        sys.stdout = fluent_log_file
-        sys.stderr = fluent_log_file
-        solver.settings.file.read_case(file_name=str(case_file))
-        sys.stdout = original_stdout
-        sys.stderr = original_stderr
+        logger.info("Case file loaded successfully")
 
-        print(f"\n✓ Case file loaded successfully")
+        if hasattr(log_file, 'name'):
+            log_file.close()
 
-        fluent_log_file.close()
-
-        # Store case file path as attribute for later reference
-        solver._case_file_path = str(case_file)
-
+        solver._case_file_path = str(case_file_path)
         return solver
 
     except Exception as e:
-        # Restore stdout/stderr if error occurs
-        sys.stdout = original_stdout
-        sys.stderr = original_stderr
-        print(f"\n✗ Error launching Fluent: {e}")
-
-        # Check for connection-related errors (VPN issue)
         error_str = str(e).lower()
-        if any(keyword in error_str for keyword in ['connection refused', 'connect', 'unavailable', '10061']):
-            print("\n" + "!"*70)
-            print("CONNECTION ERROR DETECTED")
-            print("!"*70)
-            print("\n⚠️  REMINDER: Make sure your VPN is enabled!")
-            print("\nThis error typically occurs when:")
-            print("  1. VPN is not connected (MOST COMMON)")
-            print("  2. Firewall is blocking the connection")
-            print("  3. Fluent license server is unreachable")
-            print("\nPlease enable your VPN and try again.")
-            print("="*70)
+        if 'no module named' in error_str and 'ansys' in error_str:
+            logger.error("PyFluent is not installed. Run: pip install ansys-fluent-core")
+            raise RuntimeError("PyFluent is not installed. Run: pip install ansys-fluent-core") from e
+        elif any(kw in error_str for kw in ['connection refused', 'connect', 'unavailable', '10061']):
+            logger.error("CONNECTION ERROR: Check that VPN is enabled and license server is reachable")
+        else:
+            logger.error(f"Error launching Fluent: {e}")
 
-        import traceback
-        traceback.print_exc()
         try:
-            fluent_log_file.close()
-        except:
+            if log_file is not None and hasattr(log_file, 'close'):
+                log_file.close()
+        except Exception:
             pass
-        ui_helpers.pause()
-        return None
 
-
-def open_recent_project(project_path, user_settings, project_dir, ui_helpers):
-    """Open a recent project."""
-    ui_helpers.print_header("OPEN RECENT PROJECT")
-
-    project_path = Path(project_path)
-    print(f"\n✓ Selected: {project_path.name}")
-    print(f"  Full path: {project_path}")
-
-    if not project_path.exists():
-        print(f"\n✗ File not found: {project_path}")
-        ui_helpers.pause()
-        return None
-
-    # Configure solver settings
-    settings = ui_helpers.configure_solver_settings(user_settings)
-    if settings is None:
-        print("\n✗ Launch cancelled by user")
-        ui_helpers.pause()
-        return None
-
-    # Launch Fluent
-    print("\nLaunching Fluent...")
-    print(f"  Precision: {settings['precision']}")
-    print(f"  Processors: {settings['processor_count']}")
-    print(f"  Dimension: {settings['dimension']}D")
-    print(f"  Mode: solver")
-    print(f"  GUI: {'Enabled' if settings['use_gui'] else 'Disabled'}")
-
-    try:
-        import ansys.fluent.core as pyfluent
-        from ansys.fluent.core.launcher.launcher import UIMode
-
-        # Create log file for Fluent output
-        log_dir = project_dir / "fluent_logs"
-        log_dir.mkdir(exist_ok=True)
-        log_file_path = log_dir / f"fluent_launch_{project_path.stem}.log"
-        fluent_log_file = open(log_file_path, 'w', buffering=1)
-
-        # Redirect stdout/stderr to suppress Fluent TUI output
-        original_stdout = sys.stdout
-        original_stderr = sys.stderr
-        sys.stdout = fluent_log_file
-        sys.stderr = fluent_log_file
-
-        # Determine UI mode
-        ui_mode = UIMode.GUI if settings['use_gui'] else UIMode.NO_GUI_OR_GRAPHICS
-
-        solver = pyfluent.launch_fluent(
-            precision=settings['precision'],
-            processor_count=settings['processor_count'],
-            dimension=settings['dimension'],
-            mode="solver",
-            ui_mode=ui_mode
-        )
-
-        # Restore stdout/stderr
-        sys.stdout = original_stdout
-        sys.stderr = original_stderr
-
-        print(f"\n✓ Fluent launched (version {solver.get_fluent_version()})")
-        print(f"  Loading case file: {project_path.name}")
-        print(f"  Fluent output redirected to: {log_file_path.name}")
-
-        # Redirect during case loading
-        sys.stdout = fluent_log_file
-        sys.stderr = fluent_log_file
-        solver.settings.file.read_case(file_name=str(project_path))
-        sys.stdout = original_stdout
-        sys.stderr = original_stderr
-
-        print(f"\n✓ Case file loaded successfully")
-
-        fluent_log_file.close()
-
-        # Store case file path as attribute for later reference
-        solver._case_file_path = str(project_path)
-
-        # Update recent case files (move to top)
-        user_settings.add_recent_case_file(project_path)
-
-        return solver
-
-    except Exception as e:
-        # Restore stdout/stderr if error occurs
-        sys.stdout = original_stdout
-        sys.stderr = original_stderr
-        print(f"\n✗ Error opening project: {e}")
-
-        # Check for connection-related errors (VPN issue)
-        error_str = str(e).lower()
-        if any(keyword in error_str for keyword in ['connection refused', 'connect', 'unavailable', '10061']):
-            print("\n" + "!"*70)
-            print("CONNECTION ERROR DETECTED")
-            print("!"*70)
-            print("\n⚠️  REMINDER: Make sure your VPN is enabled!")
-            print("\nThis error typically occurs when:")
-            print("  1. VPN is not connected (MOST COMMON)")
-            print("  2. Firewall is blocking the connection")
-            print("  3. Fluent license server is unreachable")
-            print("\nPlease enable your VPN and try again.")
-            print("="*70)
-
-        import traceback
-        traceback.print_exc()
-        try:
-            fluent_log_file.close()
-        except:
-            pass
-        ui_helpers.pause()
         return None

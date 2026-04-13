@@ -5,20 +5,20 @@
   ],
   "solver_settings": {
     "precision": "double",
-    "processor_count": 20,
+    "processor_count": 4,
     "dimension": 3,
-    "use_gui": false
+    "use_gui": true
   },
   "recent_setups": [
     "c:\\Users\\danny\\OneDrive - University of Arkansas\\Research\\Learning\\PyANSYS_ML\\Workflow Surrogate\\new_project\\model_setup.json",
     "C:\\Users\\danny\\OneDrive - University of Arkansas\\Research\\Learning\\PyANSYS_ML\\Workflow Surrogate\\user_settings.json"
   ],
   "recent_project_folders": [
+    "C:\\Users\\danny\\OneDrive - University of Arkansas\\Research\\Projects\\CFD_ML\\Fluent_PODNN_Surrogate_Builder\\Testing\\Test1",
     "C:\\Users\\danny\\OneDrive - University of Arkansas\\Research\\Learning\\PyANSYS_ML\\CP",
     "C:\\Users\\danny\\OneDrive - University of Arkansas\\.Machine Learning\\Project\\CP",
     "C:\\Users\\dvcurl\\OneDrive - University of Arkansas\\.Machine Learning\\Project\\CP",
-    "C:\\Users\\danny\\OneDrive - University of Arkansas\\Research\\Learning\\PyANSYS_ML\\Workflow Surrogate\\proj1",
-    "C:\\Users\\dvcurl\\Desktop\\motor"
+    "C:\\Users\\danny\\OneDrive - University of Arkansas\\Research\\Learning\\PyANSYS_ML\\Workflow Surrogate\\proj1"
   ],
   "recent_case_files": [
     "C:\\Users\\dvcurl\\OneDrive - University of Arkansas\\.Machine Learning\\Project\\ANSYS_Sim\\surrogate_CP.cas.h5",
@@ -26,5 +26,33 @@
     "C:\\Users\\danny\\OneDrive - University of Arkansas\\.Machine Learning\\Project\\ANSYS_Sim\\surrogate_CP.h5",
     "C:\\Users\\danny\\OneDrive - University of Arkansas\\Research\\Learning\\PyANSYS_ML\\Workflow Surrogate\\elbow.cas.h5",
     "C:\\Users\\dvcurl\\Desktop\\Surrogate_motor.cas.h5"
-  ]
+  ],
+  "nn_settings": {
+    "1d": {
+      "mode": "preset"
+    },
+    "2d": {
+      "mode": "custom",
+      "hidden_layers": [
+        64,
+        64,
+        32
+      ],
+      "dropout": [
+        0.1,
+        0.1,
+        0.0
+      ],
+      "l2": 0.001,
+      "learning_rate": 0.001,
+      "batch_size": 8,
+      "es_patience": 80,
+      "lr_patience": 15,
+      "pod_modes": 30
+    },
+    "3d": {
+      "mode": "preset",
+      "pod_modes": 20
+    }
+  }
 }

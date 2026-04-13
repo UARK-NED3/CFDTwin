@@ -2,8 +2,11 @@
 Simulation Runner Module
 =========================
 Handles running Fluent simulations for all DOE combinations and saving results.
+All functions are GUI-agnostic: they accept parameters, return results, and report
+progress via Python logging.
 """
 
+import logging
 import numpy as np
 from pathlib import Path
 import json
@@ -11,140 +14,131 @@ import itertools
 import time
 import sys
 import warnings
+from contextlib import contextmanager
 from io import StringIO
 
-# Suppress PyFluent deprecation warnings for get_scalar_field_data
-# (The new get_field_data API requires complex request objects;
-# we'll continue using the simpler deprecated method for now)
+logger = logging.getLogger(__name__)
+
 warnings.filterwarnings('ignore', message="'get_scalar_field_data' is deprecated")
 
-
-def run_simulations_menu(solver, setup_data, analysis, dataset_dir, ui_helpers):
-    """
-    Menu for running Fluent simulations for all DOE combinations.
-
-    Parameters
-    ----------
-    solver : PyFluent solver
-        Active Fluent solver instance
-    setup_data : dict
-        Model setup configuration
-    analysis : dict
-        Dimensional analysis
-    dataset_dir : Path
-        Dataset directory path
-    ui_helpers : module
-        UI helpers module
-    """
-    if not solver:
-        ui_helpers.print_header("RUN SIMULATIONS")
-        print("\n✗ No active Fluent session! Please open a case file first.")
-        ui_helpers.pause()
-        return
-
-    dataset_output_dir = dataset_dir / "dataset"
-    dataset_output_dir.mkdir(parents=True, exist_ok=True)
-
-    while True:
-        ui_helpers.clear_screen()
-        ui_helpers.print_header("RUN SIMULATIONS")
-
-        print(f"\nDataset Directory: {dataset_dir}")
-        print(f"Total Simulations Required: {analysis['total_input_combinations']}")
-
-        # Count existing simulation results
-        existing_results = list(dataset_output_dir.glob("sim_*.npz"))
-        print(f"Completed Simulations: {len(existing_results)}")
-
-        completeness = len(existing_results) / analysis['total_input_combinations'] * 100 if analysis['total_input_combinations'] > 0 else 0
-        print(f"Progress: {completeness:.1f}%")
-
-        print(f"\n{'='*70}")
-        print("  [1] Run Single Simulation (Manual)")
-        print("  [2] Run All Simulations (Batch)")
-        print("  [3] Run Remaining Simulations")
-        print("  [4] View Simulation Status")
-        print("  [5] Extract Data from Current Solution")
-        print("  [0] Back")
-        print("="*70)
-
-        choice = ui_helpers.get_choice(5)
-
-        if choice == 0:
-            return
-        elif choice == 1:
-            run_single_simulation(solver, setup_data, dataset_dir, ui_helpers)
-        elif choice == 2:
-            run_batch_simulations(solver, setup_data, analysis, dataset_dir, ui_helpers)
-        elif choice == 3:
-            run_remaining_simulations(solver, setup_data, analysis, dataset_dir, existing_results, ui_helpers)
-        elif choice == 4:
-            view_simulation_status(analysis, existing_results, ui_helpers)
-        elif choice == 5:
-            extract_current_solution(solver, setup_data, dataset_dir, ui_helpers)
+# Map user-facing parameter names to Fluent solution variable names (SV_*)
+FLUENT_VAR_MAP = {
+    'temperature': 'SV_T',
+    'pressure': 'SV_P',
+    'density': 'SV_DENSITY',
+    'x-velocity': 'SV_U',
+    'y-velocity': 'SV_V',
+    'z-velocity': 'SV_W',
+    'k': 'SV_K',
+    'omega': 'SV_O',
+    'turbulent-viscosity': 'SV_MU_T',
+    'enthalpy': 'SV_H',
+    'wall-distance': 'SV_WALL_DIST'
+}
 
 
-def generate_doe_combinations(setup_data):
+@contextmanager
+def suppress_fluent_output():
+    """Context manager to suppress stdout/stderr during Fluent API calls."""
+    old_stdout, old_stderr = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = StringIO(), StringIO()
+    try:
+        yield
+    finally:
+        sys.stdout, sys.stderr = old_stdout, old_stderr
+
+
+def extract_surface_data(data_dict, key):
+    """Extract data from PyFluent surface data dict, handling both formats."""
+    surface_data = data_dict[key]
+    if isinstance(surface_data, dict) and 'scalar-field' in surface_data:
+        return np.array(surface_data['scalar-field'])
+    return np.array(surface_data)
+
+
+def generate_doe_combinations(setup_data, doe_samples=None):
     """
     Generate all DOE combinations from setup data.
 
-    This function handles both legacy full-factorial DOE and new LHS/range-based DOE.
-    For LHS, the samples are already pre-generated and stored as parallel arrays.
-    For legacy, we use itertools.product to generate all combinations.
+    Supports two formats:
+    - Legacy: doe_configuration nested in setup_data
+    - New: doe_samples list of dicts from doe_samples.json (takes priority)
 
     Parameters
     ----------
     setup_data : dict
-        Model setup configuration
+        Contents of model_setup.json
+    doe_samples : list of dict, optional
+        Samples from doe_samples.json. Each dict maps 'bc_name|param_name' to value.
 
     Returns
     -------
-    list
-        List of tuples, each containing (sim_id, bc_values_dict)
+    list of (sim_id, bc_values_dict)
     """
+    # New format: build from doe_samples list
+    if doe_samples:
+        bc_type_map = {}
+        param_path_map = {}  # 'bc_name|param_display' -> dot-path for PyFluent
+        for input_item in setup_data.get('model_inputs', []):
+            bc_type_map[input_item['name']] = input_item['type']
+            # Map the DOE key to the actual PyFluent attribute path
+            param_display = input_item.get('parameter', 'value')
+            param_path = input_item.get('parameter_path', param_display.replace(' > ', '.'))
+            key = f"{input_item['name']}|{param_display}"
+            param_path_map[key] = param_path
+
+        doe_list = []
+        for sim_id, sample in enumerate(doe_samples, 1):
+            bc_values = {}
+            for key, value in sample.items():
+                parts = key.split('|', 1)
+                bc_name = parts[0]
+                param_name = parts[1] if len(parts) > 1 else 'value'
+                param_path = param_path_map.get(key, param_name.replace(' > ', '.'))
+                bc_values[key] = {
+                    'bc_name': bc_name,
+                    'bc_type': bc_type_map.get(bc_name, 'Unknown'),
+                    'param_name': param_name,
+                    'param_path': param_path,
+                    'value': value
+                }
+            doe_list.append((sim_id, bc_values))
+        return doe_list
+
+    # Legacy format
     doe_config = setup_data.get('doe_configuration', {})
 
-    # Build parameter arrays and mapping
-    # CRITICAL: Iterate in SAME order as trainer (doe_config.items())
     param_arrays = []
-    param_mapping = []  # List of (bc_name, bc_type, param_name, param_path)
+    param_mapping = []
 
-    # Build bc_type mapping from model_inputs
     bc_type_map = {}
     for input_item in setup_data['model_inputs']:
         bc_type_map[input_item['name']] = input_item['type']
 
-    # Iterate through doe_config (SAME as training order)
-    for bc_name, doe_params in doe_config.items():
+    for bc_name in sorted(doe_config.keys()):
+        doe_params = doe_config[bc_name]
         bc_type = bc_type_map.get(bc_name, 'Unknown')
 
-        for param_name, param_values in doe_params.items():
+        for param_name in sorted(doe_params.keys()):
+            param_values = doe_params[param_name]
             if param_values:
                 param_arrays.append(param_values)
-                # Store the parameter path for applying BCs
                 param_mapping.append({
                     'bc_name': bc_name,
                     'bc_type': bc_type,
                     'param_name': param_name,
-                    'param_path': param_name  # Full path like 'vmag' or 'temperature'
+                    'param_path': param_name
                 })
 
     if not param_arrays:
         return []
 
-    # Check if all arrays have the same length (indicates LHS or pre-generated samples)
-    # If they do, zip them together. Otherwise, use product for full factorial.
     array_lengths = [len(arr) for arr in param_arrays]
-
     if len(set(array_lengths)) == 1:
-        # All arrays same length - treat as parallel samples (LHS or manually added)
-        # Zip the arrays together instead of using product
         combinations = list(zip(*param_arrays))
     else:
-        # Different lengths - use full factorial (legacy behavior)
         combinations = list(itertools.product(*param_arrays))
 
-    # Create list of (sim_id, bc_values_dict)
     doe_list = []
     for sim_id, combo in enumerate(combinations, 1):
         bc_values = {}
@@ -166,17 +160,10 @@ def apply_boundary_conditions(solver, bc_values):
     """
     Apply boundary conditions to Fluent solver.
 
-    Parameters
-    ----------
-    solver : PyFluent solver
-        Active Fluent solver instance
-    bc_values : dict
-        Dictionary of BC values to apply
-
     Returns
     -------
     bool
-        True if successful, False otherwise
+        True if successful
     """
     try:
         boundary_conditions = solver.settings.setup.boundary_conditions
@@ -187,100 +174,181 @@ def apply_boundary_conditions(solver, bc_values):
             param_path = bc_info['param_path']
             value = bc_info['value']
 
-            # Get the BC object using dictionary-style access (like Field/Volume Surrogate)
             if hasattr(boundary_conditions, bc_type):
                 bc_container = getattr(boundary_conditions, bc_type)
                 if bc_name in bc_container:
                     bc_obj = bc_container[bc_name]
-
-                    # Navigate to parameter using path - use direct attribute access chain
                     try:
-                        # Build attribute chain: bc_obj.momentum.velocity_magnitude.value
                         path_parts = param_path.split('.')
                         target_obj = bc_obj
 
-                        # Navigate through ALL parts to get to the parameter object
-                        for i, part in enumerate(path_parts):
+                        for part in path_parts:
                             if hasattr(target_obj, part):
                                 target_obj = getattr(target_obj, part)
+                            elif part == 'velocity_magnitude' and hasattr(target_obj, 'velocity'):
+                                logger.info(f"Using 'velocity' instead of 'velocity_magnitude' for {bc_name}")
+                                target_obj = getattr(target_obj, 'velocity')
+                            elif part == 'velocity' and hasattr(target_obj, 'velocity_magnitude'):
+                                logger.info(f"Using 'velocity_magnitude' instead of 'velocity' for {bc_name}")
+                                target_obj = getattr(target_obj, 'velocity_magnitude')
                             else:
-                                # Try alternate names for velocity parameters
-                                if part == 'velocity_magnitude' and hasattr(target_obj, 'velocity'):
-                                    print(f"  Note: Using 'velocity' instead of 'velocity_magnitude' for {bc_name}")
-                                    target_obj = getattr(target_obj, 'velocity')
-                                elif part == 'velocity' and hasattr(target_obj, 'velocity_magnitude'):
-                                    print(f"  Note: Using 'velocity_magnitude' instead of 'velocity' for {bc_name}")
-                                    target_obj = getattr(target_obj, 'velocity_magnitude')
-                                else:
-                                    print(f"  ✗ Error: Path part '{part}' not found in {bc_name}")
-                                    print(f"     Full path attempted: {bc_name}.{param_path}")
-                                    if hasattr(target_obj, 'child_names'):
-                                        try:
-                                            available = target_obj.child_names
-                                            print(f"     Available: {available[:15] if len(available) > 15 else available}")
-                                        except:
-                                            pass
-                                    return False
+                                logger.error(f"Path part '{part}' not found in {bc_name}.{param_path}")
+                                return False
 
-                        # Now target_obj should have a .value attribute we can set
                         if hasattr(target_obj, 'value'):
-                            # Set the new value (convert to float to match Field/Volume Surrogate)
                             target_obj.value = float(value)
-
-                            # Simple confirmation - don't try to verify since Fluent returns internal objects
-                            print(f"  ✓ {bc_name}.{param_path} = {value}")
-
+                            logger.info(f"{bc_name}.{param_path} = {value}")
                         else:
-                            print(f"  ✗ Error: {bc_name}.{param_path} has no .value attribute")
-                            print(f"     Object type: {type(target_obj).__name__}")
+                            logger.error(f"{bc_name}.{param_path} has no .value attribute")
                             return False
 
                     except Exception as e:
-                        print(f"  ✗ Exception setting {bc_name}.{param_path}: {e}")
-                        import traceback
-                        traceback.print_exc()
+                        logger.error(f"Exception setting {bc_name}.{param_path}: {e}")
                         return False
                 else:
-                    print(f"  ✗ Error: BC '{bc_name}' not found in {bc_type}")
+                    logger.error(f"BC '{bc_name}' not found in {bc_type}")
                     return False
             else:
-                print(f"  ✗ Error: BC type '{bc_type}' not found")
+                logger.error(f"BC type '{bc_type}' not found")
                 return False
 
         return True
 
     except Exception as e:
-        print(f"\n✗ Error applying boundary conditions: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error applying boundary conditions: {e}")
         return False
 
 
-def extract_field_data(solver, setup_data, dataset_dir):
+def extract_coordinates(solver, setup_data, dataset_dir):
     """
-    Extract field data from configured output locations.
-    Handles surfaces (2D), cell zones (3D), and report definitions (scalar).
-
-    Parameters
-    ----------
-    solver : PyFluent solver
-        Active Fluent solver instance
-    setup_data : dict
-        Model setup configuration
-    dataset_dir : Path
-        Dataset directory path
+    Extract coordinates from all configured output locations.
 
     Returns
     -------
     dict or None
-        Dictionary containing extracted data, or None if error
+        Keys like "location|coordinates" -> np.array shape (n_points, 3)
     """
     try:
-        # Load output parameters configuration
-        output_params_file = dataset_dir / "output_parameters.json"
+        output_params_file = dataset_dir.parent / "output_parameters.json"
         if not output_params_file.exists():
-            print("\n✗ output_parameters.json not found!")
-            print("  Please configure output parameters in I/O Setup menu.")
+            logger.error("output_parameters.json not found")
+            return None
+
+        with open(output_params_file, 'r') as f:
+            output_params = json.load(f)
+
+        coord_data = {}
+
+        for output_item in output_params.get('outputs', []):
+            output_name = output_item['name']
+            output_category = output_item.get('category', 'Surface')
+
+            if output_category == "Report Definition":
+                continue
+            if not output_item.get('field_variables', []):
+                continue
+
+            coord_key = f"{output_name}|coordinates"
+
+            if output_category == "Cell Zone":
+                try:
+                    logger.info(f"Extracting centroids for {output_name}...")
+                    solution_data = solver.fields.solution_variable_data
+                    centroid_dict = solution_data.get_data(
+                        zone_names=[output_name], variable_name='SV_CENTROID', domain_name='mixture')
+                    centroids_flat = np.array(centroid_dict[output_name])
+                    n_cells = len(centroids_flat) // 3
+                    coord_data[coord_key] = centroids_flat.reshape((n_cells, 3))
+                    logger.info(f"  {output_name}: {n_cells} cells")
+                except Exception as e:
+                    logger.error(f"Error extracting centroids for {output_name}: {e}")
+            else:
+                try:
+                    logger.info(f"Extracting coordinates for {output_name}...")
+                    field_data = solver.fields.field_data
+                    x_dict = field_data.get_scalar_field_data(
+                        field_name='x-coordinate', surfaces=[output_name], node_value=False)
+                    y_dict = field_data.get_scalar_field_data(
+                        field_name='y-coordinate', surfaces=[output_name], node_value=False)
+                    z_dict = field_data.get_scalar_field_data(
+                        field_name='z-coordinate', surfaces=[output_name], node_value=False)
+                    x = extract_surface_data(x_dict, output_name)
+                    y = extract_surface_data(y_dict, output_name)
+                    z = extract_surface_data(z_dict, output_name)
+                    coord_data[coord_key] = np.stack([x, y, z], axis=1)
+                    logger.info(f"  {output_name}: {len(x)} points")
+                except Exception as e:
+                    logger.error(f"Error extracting coordinates for {output_name}: {e}")
+
+        return coord_data if coord_data else None
+
+    except Exception as e:
+        logger.error(f"Error extracting coordinates: {e}")
+        return None
+
+
+def save_reference_coordinates(coord_data, dataset_dir):
+    """Save coordinate reference file to dataset/coordinates.npz."""
+    coord_file = dataset_dir / "dataset" / "coordinates.npz"
+    np.savez_compressed(coord_file, **coord_data)
+    logger.info(f"Reference coordinates saved: {coord_file.name}")
+
+
+def load_reference_coordinates(dataset_dir):
+    """Load coordinate reference file. Returns dict or None."""
+    coord_file = dataset_dir / "dataset" / "coordinates.npz"
+    if not coord_file.exists():
+        return None
+    data = np.load(coord_file, allow_pickle=True)
+    return {key: data[key] for key in data.files}
+
+
+def get_reference_point_counts(dataset_dir):
+    """Get expected point counts per location from reference coordinates."""
+    ref = load_reference_coordinates(dataset_dir)
+    if ref is None:
+        return None
+    return {key.split('|')[0]: len(arr) for key, arr in ref.items()}
+
+
+def validate_field_point_counts(field_data, dataset_dir):
+    """
+    Validate that field data point counts match the reference coordinates.
+
+    Returns
+    -------
+    (bool, str)
+        (True, "") if valid, (False, error_message) if mismatch
+    """
+    ref_counts = get_reference_point_counts(dataset_dir)
+    if ref_counts is None:
+        return True, ""
+
+    for key, arr in field_data.items():
+        location = key.split('|')[0]
+        if location in ref_counts:
+            expected = ref_counts[location]
+            actual = len(arr)
+            if actual != expected:
+                return False, (
+                    f"Mesh inconsistency for '{location}': expected {expected} points, got {actual}. "
+                    f"Delete dataset and restart DOE, or use existing dataset as-is."
+                )
+    return True, ""
+
+
+def extract_field_data(solver, setup_data, dataset_dir):
+    """
+    Extract field data (values only, no coordinates) from configured output locations.
+
+    Returns
+    -------
+    dict or None
+    """
+    try:
+        output_params_file = dataset_dir.parent / "output_parameters.json"
+        if not output_params_file.exists():
+            logger.error("output_parameters.json not found")
             return None
 
         with open(output_params_file, 'r') as f:
@@ -288,722 +356,389 @@ def extract_field_data(solver, setup_data, dataset_dir):
 
         output_data = {}
 
-        # Extract data from each configured output
-        for output_item in setup_data['model_outputs']:
+        for output_item in output_params.get('outputs', []):
             output_name = output_item['name']
-            output_type = output_item['type']
-            output_category = output_item['category']
+            output_category = output_item.get('category', 'Surface')
+            params_to_extract = output_item.get('field_variables', [])
 
-            # Get configured parameters for this output
-            params_to_extract = output_params.get(output_name, [])
-
-            # Report Definitions don't need configuration - extract automatically
             if output_category == "Report Definition":
-                print(f"  Extracting from {output_name} ({output_category})...")
                 try:
-                    # Get report definition value using compute method
                     result = solver.settings.solution.report_definitions.compute(report_defs=[output_name])
-
-                    # Extract value from result structure: [{'report-name': [value, ...]}]
                     report_value = result[0][output_name][0]
-
-                    # Use generic 'value' as field name for report definitions
-                    # Or use first configured param if available
                     param_name = params_to_extract[0] if params_to_extract else 'value'
-                    key = f"{output_name}|{param_name}"
-                    output_data[key] = np.array([report_value])
-                    print(f"    ✓ {param_name}: {report_value:.6f}")
-
+                    output_data[f"{output_name}|{param_name}"] = np.array([report_value])
+                    logger.info(f"{output_name}|{param_name}: {report_value:.6f}")
                 except Exception as e:
-                    print(f"    ✗ Error extracting report definition: {e}")
+                    logger.error(f"Error extracting report definition {output_name}: {e}")
                 continue
 
-            # For other output types, configuration is required
             if not params_to_extract:
-                print(f"  ⚠ Warning: No parameters configured for {output_name}, skipping")
+                logger.warning(f"No parameters configured for {output_name}, skipping")
                 continue
 
-            print(f"  Extracting from {output_name} ({output_category})...")
-            print(f"    Parameters: {', '.join(params_to_extract)}")
+            logger.info(f"Extracting from {output_name} ({output_category}): {', '.join(params_to_extract)}")
 
             if output_category == "Cell Zone":
-                # Extract volume (3D) data using solution_variable_data
                 solution_data = solver.fields.solution_variable_data
-
-                # Extract cell centroids first (only once per zone)
-                coord_key = f"{output_name}|coordinates"
-                if coord_key not in output_data:
-                    try:
-                        print(f"  Extracting cell centroids...")
-                        centroid_dict = solution_data.get_data(
-                            zone_names=[output_name],
-                            variable_name='SV_CENTROID',
-                            domain_name='mixture'
-                        )
-
-                        # SV_CENTROID returns flat array [x1,y1,z1,x2,y2,z2,...]
-                        centroids_flat = np.array(centroid_dict[output_name])
-
-                        # Reshape to (n_cells, 3)
-                        n_cells = len(centroids_flat) // 3
-                        coordinates = centroids_flat.reshape((n_cells, 3))
-
-                        output_data[coord_key] = coordinates
-                        print(f"    ✓ Centroids: {len(coordinates)} cells")
-                    except Exception as e:
-                        print(f"    ✗ Error extracting centroids: {e}")
-
-                # Extract field parameters
                 for param_name in params_to_extract:
                     try:
-                        # Special handling for velocity-magnitude (needs to be computed from components)
                         if param_name == 'velocity-magnitude':
-                            # Extract velocity components
-                            u_dict = solution_data.get_data(
-                                zone_names=[output_name],
-                                variable_name='SV_U',
-                                domain_name='mixture'
-                            )
-                            v_dict = solution_data.get_data(
-                                zone_names=[output_name],
-                                variable_name='SV_V',
-                                domain_name='mixture'
-                            )
-                            w_dict = solution_data.get_data(
-                                zone_names=[output_name],
-                                variable_name='SV_W',
-                                domain_name='mixture'
-                            )
-
-                            # Compute magnitude
-                            u = np.array(u_dict[output_name])
-                            v = np.array(v_dict[output_name])
-                            w = np.array(w_dict[output_name])
-                            velocity_mag = np.sqrt(u**2 + v**2 + w**2)
-
-                            # Store the data
-                            key = f"{output_name}|{param_name}"
-                            output_data[key] = velocity_mag
-                            print(f"    ✓ {param_name}: {len(velocity_mag)} cells (computed from U,V,W)")
+                            u = np.array(solution_data.get_data(
+                                zone_names=[output_name], variable_name='SV_U', domain_name='mixture')[output_name])
+                            v = np.array(solution_data.get_data(
+                                zone_names=[output_name], variable_name='SV_V', domain_name='mixture')[output_name])
+                            w = np.array(solution_data.get_data(
+                                zone_names=[output_name], variable_name='SV_W', domain_name='mixture')[output_name])
+                            output_data[f"{output_name}|{param_name}"] = np.sqrt(u**2 + v**2 + w**2)
+                            logger.info(f"  {param_name}: {len(u)} cells (computed from U,V,W)")
                             continue
 
-                        # Map parameter names to Fluent solution variable names (SV_*)
-                        fluent_var_map = {
-                            'temperature': 'SV_T',
-                            'pressure': 'SV_P',
-                            'density': 'SV_DENSITY',
-                            'x-velocity': 'SV_U',
-                            'y-velocity': 'SV_V',
-                            'z-velocity': 'SV_W',
-                            'k': 'SV_K',
-                            'omega': 'SV_O',
-                            'turbulent-viscosity': 'SV_MU_T',
-                            'enthalpy': 'SV_H',
-                            'wall-distance': 'SV_WALL_DIST'
-                        }
+                        fluent_var = FLUENT_VAR_MAP.get(param_name, param_name.upper())
 
-                        fluent_var = fluent_var_map.get(param_name, param_name.upper())
-
-                        # Get available variables for this zone first
                         try:
-                            solution_var_info = solver.fields.solution_variable_info
-                            zone_info = solution_var_info.get_variables_info(
-                                zone_names=[output_name],
-                                domain_name='mixture'
-                            )
-                            available_vars = zone_info.solution_variables
-
-                            if fluent_var not in available_vars:
-                                print(f"    ⚠ Variable {fluent_var} not available for zone {output_name}")
-                                print(f"      Available variables: {', '.join(available_vars)}")
+                            zone_info = solver.fields.solution_variable_info.get_variables_info(
+                                zone_names=[output_name], domain_name='mixture')
+                            if fluent_var not in zone_info.solution_variables:
+                                logger.warning(f"{fluent_var} not available for zone {output_name}")
                                 continue
-                        except Exception as info_error:
-                            print(f"    ⚠ Could not query available variables: {info_error}")
-                            # Continue anyway and let get_data raise error if variable doesn't exist
+                        except Exception:
+                            pass  # Continue and let get_data raise if variable doesn't exist
 
-                        # Get volume data
                         data_dict = solution_data.get_data(
-                            zone_names=[output_name],
-                            variable_name=fluent_var,
-                            domain_name='mixture'
-                        )
-
-                        # Extract data for the zone
+                            zone_names=[output_name], variable_name=fluent_var, domain_name='mixture')
                         zone_data = np.array(data_dict[output_name])
-
-                        # Store the data
-                        key = f"{output_name}|{param_name}"
-                        output_data[key] = zone_data
-                        print(f"    ✓ {param_name}: {len(zone_data)} cells")
-
+                        output_data[f"{output_name}|{param_name}"] = zone_data
+                        logger.info(f"  {param_name}: {len(zone_data)} cells")
                     except Exception as e:
-                        print(f"    ✗ Error extracting {param_name}: {e}")
-
+                        logger.error(f"Error extracting {param_name} from {output_name}: {e}")
             else:
-                # Extract surface (2D) data using field_data
                 field_data = solver.fields.field_data
-
-                # Extract coordinates first (only once per surface)
-                coord_key = f"{output_name}|coordinates"
-                if coord_key not in output_data:
-                    try:
-                        print(f"  Extracting coordinates...")
-                        x_dict = field_data.get_scalar_field_data(
-                            field_name='x-coordinate',
-                            surfaces=[output_name],
-                            node_value=False
-                        )
-                        y_dict = field_data.get_scalar_field_data(
-                            field_name='y-coordinate',
-                            surfaces=[output_name],
-                            node_value=False
-                        )
-                        z_dict = field_data.get_scalar_field_data(
-                            field_name='z-coordinate',
-                            surfaces=[output_name],
-                            node_value=False
-                        )
-
-                        # Extract data - handle both dict and direct array formats
-                        def extract_data(data_dict, key):
-                            surface_data = data_dict[key]
-                            if isinstance(surface_data, dict) and 'scalar-field' in surface_data:
-                                return np.array(surface_data['scalar-field'])
-                            else:
-                                return np.array(surface_data)
-
-                        x_coords = extract_data(x_dict, output_name)
-                        y_coords = extract_data(y_dict, output_name)
-                        z_coords = extract_data(z_dict, output_name)
-
-                        # Stack into (n_points, 3) array
-                        coordinates = np.stack([x_coords, y_coords, z_coords], axis=1)
-                        output_data[coord_key] = coordinates
-                        print(f"    ✓ Coordinates: {len(coordinates)} points")
-                    except Exception as e:
-                        print(f"    ✗ Error extracting coordinates: {e}")
-
-                # Extract field parameters
                 for param_name in params_to_extract:
                     try:
-                        # Get scalar field data for this surface
                         data_dict = field_data.get_scalar_field_data(
-                            field_name=param_name,
-                            surfaces=[output_name],
-                            node_value=False
-                        )
-
-                        # Extract data - handle both dict and direct array formats
-                        def extract_data(data_dict, key):
-                            surface_data = data_dict[key]
-                            if isinstance(surface_data, dict) and 'scalar-field' in surface_data:
-                                return np.array(surface_data['scalar-field'])
-                            else:
-                                return np.array(surface_data)
-
-                        surface_data = extract_data(data_dict, output_name)
-
-                        # Store the data
-                        key = f"{output_name}|{param_name}"
-                        output_data[key] = surface_data
-
-                        # Show statistics to verify data
-                        stats = f"{len(surface_data)} points, range: [{surface_data.min():.6f}, {surface_data.max():.6f}]"
-                        print(f"    ✓ {param_name}: {stats}")
-
+                            field_name=param_name, surfaces=[output_name], node_value=False)
+                        surface_data = extract_surface_data(data_dict, output_name)
+                        output_data[f"{output_name}|{param_name}"] = surface_data
+                        logger.info(f"  {param_name}: {len(surface_data)} points, "
+                                    f"range: [{surface_data.min():.6f}, {surface_data.max():.6f}]")
                     except Exception as e:
-                        print(f"    ✗ Error extracting {param_name}: {e}")
+                        logger.error(f"Error extracting {param_name} from {output_name}: {e}")
 
         return output_data if output_data else None
 
     except Exception as e:
-        print(f"\n✗ Error extracting field data: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error extracting field data: {e}")
         return None
 
 
-def run_single_simulation(solver, setup_data, dataset_dir, ui_helpers):
-    """Run a single simulation with manual or CSV input."""
-    ui_helpers.clear_screen()
-    ui_helpers.print_header("RUN SINGLE SIMULATION")
+def _ensure_reference_coordinates(solver, setup_data, dataset_dir):
+    """Create reference coordinates if they don't exist yet. Returns True on success."""
+    if load_reference_coordinates(dataset_dir) is not None:
+        return True
+    logger.info("Creating reference coordinates...")
+    coord_data = extract_coordinates(solver, setup_data, dataset_dir)
+    if coord_data:
+        save_reference_coordinates(coord_data, dataset_dir)
+        return True
+    logger.error("Failed to extract reference coordinates")
+    return False
 
-    # Generate DOE combinations
+
+def run_single_simulation(solver, setup_data, dataset_dir, sim_id, iterations=100):
+    """
+    Run a single simulation by DOE index.
+
+    Returns
+    -------
+    (bool, Path or None)
+        (success, output_file_path)
+    """
     doe_list = generate_doe_combinations(setup_data)
     if not doe_list:
-        print("\n✗ No DOE combinations found!")
-        print("  Please configure DOE parameters first.")
-        ui_helpers.pause()
-        return
+        logger.error("No DOE combinations found")
+        return False, None
 
-    print(f"\nTotal available simulations: {len(doe_list)}")
-
-    # Ask for simulation ID
-    sim_id_str = input("\nEnter simulation ID to run (1-{}): ".format(len(doe_list))).strip()
-
-    if not sim_id_str.isdigit():
-        print("✗ Invalid simulation ID")
-        ui_helpers.pause()
-        return
-
-    sim_id = int(sim_id_str)
     if sim_id < 1 or sim_id > len(doe_list):
-        print(f"✗ Simulation ID must be between 1 and {len(doe_list)}")
-        ui_helpers.pause()
-        return
+        logger.error(f"Simulation ID {sim_id} out of range (1-{len(doe_list)})")
+        return False, None
 
-    # Get the BC values for this simulation
     _, bc_values = doe_list[sim_id - 1]
 
-    print(f"\n{'='*70}")
-    print(f"SIMULATION {sim_id}")
-    print("="*70)
-    print("\nBoundary Conditions to Apply:")
-    for bc_key, bc_info in bc_values.items():
-        print(f"  {bc_info['bc_name']}.{bc_info['param_name']} = {bc_info['value']}")
+    logger.info(f"Running simulation {sim_id}")
+    for bc_info in bc_values.values():
+        logger.info(f"  {bc_info['bc_name']}.{bc_info['param_name']} = {bc_info['value']}")
 
-    confirm = input("\nProceed with this simulation? [y/N]: ").strip().lower()
-    if confirm != 'y':
-        print("\n✗ Cancelled")
-        ui_helpers.pause()
-        return
-
-    # Run the simulation
-    print(f"\n{'='*70}")
-    print("RUNNING SIMULATION")
-    print("="*70)
-
-    # Step 1: Apply BCs
-    print("\n[1/4] Applying boundary conditions...")
     if not apply_boundary_conditions(solver, bc_values):
-        print("\n✗ Failed to apply boundary conditions")
-        ui_helpers.pause()
-        return
+        return False, None
 
-    # Step 2: Initialize
-    print("\n[2/4] Initializing solution...")
     try:
-        # Suppress Fluent output
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
-        sys.stdout = StringIO()
-        sys.stderr = StringIO()
-
-        # Use hybrid initialization
-        solver.settings.solution.initialization.hybrid_initialize()
-
-        # Restore output
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-        print("  ✓ Initialized (hybrid)")
+        with suppress_fluent_output():
+            solver.settings.solution.initialization.hybrid_initialize()
+        logger.info("Initialized (hybrid)")
     except Exception as e:
-        # Restore output on error
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-        print(f"  ✗ Initialization error: {e}")
-        ui_helpers.pause()
-        return
+        logger.error(f"Initialization error: {e}")
+        return False, None
 
-    # Step 3: Solve
-    print("\n[3/4] Running solution...")
     try:
-        # Get number of iterations from user
-        iterations_str = input("  Enter number of iterations [100]: ").strip() or "100"
-        iterations = int(iterations_str)
-
-        print(f"  Running {iterations} iterations...")
-
-        # Suppress Fluent output during solve
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
-        sys.stdout = StringIO()
-        sys.stderr = StringIO()
-
-        solver.settings.solution.run_calculation.iterate(iter_count=iterations)
-
-        # Restore output
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-        print("  ✓ Solution complete")
+        with suppress_fluent_output():
+            solver.settings.solution.run_calculation.iterate(iter_count=iterations)
+        logger.info("Solution complete")
     except Exception as e:
-        # Restore output on error
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-        print(f"  ✗ Solution error: {e}")
-        ui_helpers.pause()
-        return
+        logger.error(f"Solution error: {e}")
+        return False, None
 
-    # Step 4: Extract data
-    print("\n[4/4] Extracting field data...")
     output_data = extract_field_data(solver, setup_data, dataset_dir)
     if output_data is None:
-        print("\n✗ Failed to extract field data")
-        ui_helpers.pause()
-        return
+        return False, None
 
-    # Save results
-    output_file = dataset_dir / "dataset" / f"sim_{sim_id:04d}.npz"
-    np.savez_compressed(output_file, **output_data)
-    print(f"\n✓ Results saved to: {output_file.name}")
-    print(f"  Fields saved: {len(output_data)}")
-
-    ui_helpers.pause()
-
-
-def run_batch_simulations(solver, setup_data, analysis, dataset_dir, ui_helpers):
-    """Run all simulations in batch mode."""
-    ui_helpers.clear_screen()
-    ui_helpers.print_header("RUN BATCH SIMULATIONS")
-
-    # Generate DOE combinations
-    doe_list = generate_doe_combinations(setup_data)
-    if not doe_list:
-        print("\n✗ No DOE combinations found!")
-        ui_helpers.pause()
-        return
-
-    total_sims = len(doe_list)
-    print(f"\nTotal simulations: {total_sims}")
-
-    # Get simulation parameters
-    print("\nSimulation Parameters:")
-    iterations_str = input("  Iterations per simulation [100]: ").strip() or "100"
-    iterations = int(iterations_str)
-
-    save_interval_str = input("  Save progress every N simulations [10]: ").strip() or "10"
-    save_interval = int(save_interval_str)
-
-    confirm = input(f"\nRun {total_sims} simulations? [y/N]: ").strip().lower()
-    if confirm != 'y':
-        print("\n✗ Cancelled")
-        ui_helpers.pause()
-        return
-
-    # Run all simulations
-    print(f"\n{'='*70}")
-    print("BATCH SIMULATION")
-    print("="*70)
-
-    outputs_dir = dataset_dir / "dataset"
+    outputs_dir = dataset_dir
     outputs_dir.mkdir(exist_ok=True)
 
-    start_time = time.time()
-    successful = 0
-    failed = 0
+    if not _ensure_reference_coordinates(solver, setup_data, dataset_dir):
+        return False, None
 
-    is_first_sim = True
-    for sim_id, bc_values in doe_list:
-        # Check if simulation already exists
-        output_file = outputs_dir / f"sim_{sim_id:04d}.npz"
-        if output_file.exists():
-            print(f"\n[{sim_id}/{total_sims}] Skipping (already exists)")
-            successful += 1
-            continue
+    valid, error_msg = validate_field_point_counts(output_data, dataset_dir)
+    output_file = outputs_dir / f"sim_{sim_id:04d}.npz"
+    np.savez_compressed(output_file, **output_data)
 
-        print(f"\n{'='*70}")
-        print(f"[{sim_id}/{total_sims}] Simulation {sim_id}")
-        print("="*70)
+    if not valid:
+        logger.error(error_msg)
+        return False, output_file
 
-        # Apply BCs
-        print("Applying BCs...")
-        if not apply_boundary_conditions(solver, bc_values):
-            print("✗ Failed to apply BCs")
-            failed += 1
-            continue
-
-        # Initialize only for the first simulation in batch
-        if is_first_sim:
-            try:
-                # Suppress Fluent output
-                old_stdout = sys.stdout
-                old_stderr = sys.stderr
-                sys.stdout = StringIO()
-                sys.stderr = StringIO()
-
-                solver.settings.solution.initialization.hybrid_initialize()
-
-                sys.stdout = old_stdout
-                sys.stderr = old_stderr
-                print("Initialized (hybrid)")
-                is_first_sim = False
-            except Exception as e:
-                sys.stdout = old_stdout
-                sys.stderr = old_stderr
-                print(f"✗ Initialization failed: {e}")
-                failed += 1
-                continue
-        else:
-            print("Continuing from previous solution (no reinitialization)")
-
-        # Solve
-        try:
-            # Suppress Fluent output
-            old_stdout = sys.stdout
-            old_stderr = sys.stderr
-            sys.stdout = StringIO()
-            sys.stderr = StringIO()
-
-            solver.settings.solution.run_calculation.iterate(iter_count=iterations)
-
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
-        except Exception as e:
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
-            print(f"✗ Solution failed: {e}")
-            failed += 1
-            continue
-
-        # Extract data
-        output_data = extract_field_data(solver, setup_data, dataset_dir)
-        if output_data is None:
-            print("✗ Data extraction failed")
-            failed += 1
-            continue
-
-        # Save
-        try:
-            np.savez_compressed(output_file, **output_data)
-            print(f"✓ Saved {output_file.name}")
-            successful += 1
-        except Exception as e:
-            print(f"✗ Save failed: {e}")
-            failed += 1
-            continue
-
-        # Progress update
-        elapsed = time.time() - start_time
-        avg_time = elapsed / sim_id
-        remaining = (total_sims - sim_id) * avg_time
-        print(f"\nProgress: {successful}/{total_sims} complete, {failed} failed")
-        print(f"Time: {elapsed/60:.1f}m elapsed, ~{remaining/60:.1f}m remaining")
-
-    # Final summary
-    print(f"\n{'='*70}")
-    print("BATCH SIMULATION COMPLETE")
-    print("="*70)
-    print(f"  Successful: {successful}/{total_sims}")
-    print(f"  Failed: {failed}/{total_sims}")
-    print(f"  Total time: {(time.time() - start_time)/60:.1f} minutes")
-
-    ui_helpers.pause()
+    logger.info(f"Saved {output_file.name} ({len(output_data)} fields)")
+    return True, output_file
 
 
-def run_remaining_simulations(solver, setup_data, analysis, dataset_dir, existing_results, ui_helpers):
-    """Run only the simulations that haven't been completed yet."""
-    ui_helpers.clear_screen()
-    ui_helpers.print_header("RUN REMAINING SIMULATIONS")
+def run_batch_simulations(solver, setup_data, dataset_dir, iterations=100, on_progress=None):
+    """
+    Run all DOE simulations in batch mode.
 
-    # Generate DOE combinations
+    Returns
+    -------
+    dict
+        Summary: {'successful', 'failed', 'total', 'elapsed', 'stopped_reason'}
+    """
     doe_list = generate_doe_combinations(setup_data)
     if not doe_list:
-        print("\n✗ No DOE combinations found!")
-        ui_helpers.pause()
-        return
+        logger.error("No DOE combinations found")
+        return {'successful': 0, 'failed': 0, 'total': 0, 'elapsed': 0, 'stopped_reason': 'No DOE combinations'}
 
-    # Find completed simulation IDs
+    return _run_simulation_batch(solver, setup_data, dataset_dir, doe_list, iterations, on_progress)
+
+
+def run_remaining_simulations(solver, setup_data, dataset_dir, iterations=100,
+                              on_progress=None, stop_flag=None, reinitialize=True,
+                              doe_samples=None):
+    """
+    Run only uncompleted DOE simulations.
+
+    Parameters
+    ----------
+    stop_flag : callable, optional
+        Returns True when the user requests a stop after the current sim.
+    reinitialize : bool
+        If True, reinitialize the solver before each simulation. If False,
+        continue from the previous solution (faster for small parameter changes).
+    doe_samples : list of dict, optional
+        Samples from doe_samples.json. If provided, used instead of legacy doe_configuration.
+
+    Returns
+    -------
+    dict
+        Summary: {'successful', 'failed', 'total', 'elapsed', 'stopped_reason'}
+    """
+    doe_list = generate_doe_combinations(setup_data, doe_samples=doe_samples)
+    if not doe_list:
+        logger.error("No DOE combinations found")
+        return {'successful': 0, 'failed': 0, 'total': 0, 'elapsed': 0, 'stopped_reason': 'No DOE combinations'}
+
+    outputs_dir = dataset_dir
     completed_ids = set()
-    for result_file in existing_results:
-        try:
-            sim_id = int(result_file.stem.split('_')[1])
-            completed_ids.add(sim_id)
-        except:
-            pass
+    if outputs_dir.exists():
+        for f in outputs_dir.glob("sim_*.npz"):
+            try:
+                completed_ids.add(int(f.stem.split('_')[1]))
+            except (ValueError, IndexError):
+                pass
 
-    # Filter to only remaining
-    remaining_doe = [(sim_id, bc_vals) for sim_id, bc_vals in doe_list if sim_id not in completed_ids]
+    remaining = [(sid, bc) for sid, bc in doe_list if sid not in completed_ids]
+    if not remaining:
+        logger.info("All simulations complete")
+        return {'successful': 0, 'failed': 0, 'total': 0, 'elapsed': 0, 'stopped_reason': None}
 
-    if not remaining_doe:
-        print("\n✓ All simulations complete!")
-        ui_helpers.pause()
-        return
+    logger.info(f"Remaining: {len(remaining)}, Completed: {len(completed_ids)}")
+    return _run_simulation_batch(solver, setup_data, dataset_dir, remaining, iterations,
+                                 on_progress, stop_flag, reinitialize)
 
-    total_sims = len(remaining_doe)
-    print(f"\nRemaining simulations: {total_sims}")
-    print(f"Completed: {len(completed_ids)}")
 
-    # Get simulation parameters
-    print("\nSimulation Parameters:")
-    iterations_str = input("  Iterations per simulation [100]: ").strip() or "100"
-    iterations = int(iterations_str)
+def _run_simulation_batch(solver, setup_data, dataset_dir, doe_list, iterations,
+                          on_progress=None, stop_flag=None, reinitialize=True):
+    """
+    Core batch simulation loop.
 
-    confirm = input(f"\nRun {total_sims} remaining simulations? [y/N]: ").strip().lower()
-    if confirm != 'y':
-        print("\n✗ Cancelled")
-        ui_helpers.pause()
-        return
+    Parameters
+    ----------
+    on_progress : callable, optional
+        Called as on_progress(idx, total, sim_id, status_str) for each simulation
+    stop_flag : callable, optional
+        Returns True when the user requests a graceful stop.
+    reinitialize : bool
+        If True, reinitialize before each sim. If False, continue from previous solution.
 
-    # Run remaining simulations
-    print(f"\n{'='*70}")
-    print("RESUMING BATCH SIMULATION")
-    print("="*70)
+    Returns
+    -------
+    dict
+        Summary: {'successful', 'failed', 'total', 'elapsed', 'stopped_reason'}
+    """
+    outputs_dir = dataset_dir
+    outputs_dir.mkdir(exist_ok=True)
 
-    outputs_dir = dataset_dir / "dataset"
+    total = len(doe_list)
     start_time = time.time()
     successful = 0
     failed = 0
-
     is_first_sim = True
-    for idx, (sim_id, bc_values) in enumerate(remaining_doe, 1):
-        print(f"\n{'='*70}")
-        print(f"[{idx}/{total_sims}] Simulation {sim_id}")
-        print("="*70)
+    has_reference_coords = load_reference_coordinates(dataset_dir) is not None
+    stopped_reason = None
 
-        # Apply BCs
-        print("Applying BCs...")
-        if not apply_boundary_conditions(solver, bc_values):
-            print("✗ Failed to apply BCs")
-            failed += 1
+    for idx, (sim_id, bc_values) in enumerate(doe_list, 1):
+        # Check stop flag between simulations
+        if stop_flag and stop_flag():
+            logger.info("Stop requested by user")
+            stopped_reason = 'User requested stop'
+            break
+
+        output_file = outputs_dir / f"sim_{sim_id:04d}.npz"
+        if output_file.exists():
+            logger.debug(f"Skipping sim {sim_id} (already exists)")
+            successful += 1
+            if on_progress:
+                on_progress(idx, total, sim_id, 'skipped')
             continue
 
-        # Initialize only for the first simulation in batch
-        if is_first_sim:
+        logger.info(f"[{idx}/{total}] Simulation {sim_id}")
+        if on_progress:
+            on_progress(idx, total, sim_id, 'running')
+
+        if not apply_boundary_conditions(solver, bc_values):
+            failed += 1
+            if on_progress:
+                on_progress(idx, total, sim_id, 'failed')
+            continue
+
+        if is_first_sim or reinitialize:
             try:
-                # Suppress Fluent output
-                old_stdout = sys.stdout
-                old_stderr = sys.stderr
-                sys.stdout = StringIO()
-                sys.stderr = StringIO()
-
-                solver.settings.solution.initialization.hybrid_initialize()
-
-                sys.stdout = old_stdout
-                sys.stderr = old_stderr
-                print("Initialized (hybrid)")
+                with suppress_fluent_output():
+                    solver.settings.solution.initialization.hybrid_initialize()
+                logger.info("Initialized (hybrid)")
                 is_first_sim = False
             except Exception as e:
-                sys.stdout = old_stdout
-                sys.stderr = old_stderr
-                print(f"✗ Initialization failed: {e}")
+                logger.error(f"Initialization failed: {e}")
                 failed += 1
+                if on_progress:
+                    on_progress(idx, total, sim_id, 'failed')
                 continue
         else:
-            print("Continuing from previous solution (no reinitialization)")
+            logger.debug("Continuing from previous solution")
 
-        # Solve
         try:
-            # Suppress Fluent output
-            old_stdout = sys.stdout
-            old_stderr = sys.stderr
-            sys.stdout = StringIO()
-            sys.stderr = StringIO()
-
-            solver.settings.solution.run_calculation.iterate(iter_count=iterations)
-
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
+            with suppress_fluent_output():
+                solver.settings.solution.run_calculation.iterate(iter_count=iterations)
         except Exception as e:
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
-            print(f"✗ Solution failed: {e}")
+            logger.error(f"Solution failed: {e}")
             failed += 1
+            if on_progress:
+                on_progress(idx, total, sim_id, 'failed')
             continue
 
-        # Extract data
         output_data = extract_field_data(solver, setup_data, dataset_dir)
         if output_data is None:
-            print("✗ Data extraction failed")
             failed += 1
+            if on_progress:
+                on_progress(idx, total, sim_id, 'failed')
             continue
 
-        # Save
-        try:
-            output_file = outputs_dir / f"sim_{sim_id:04d}.npz"
+        if not has_reference_coords:
+            coord_data = extract_coordinates(solver, setup_data, dataset_dir)
+            if coord_data:
+                save_reference_coordinates(coord_data, dataset_dir)
+                has_reference_coords = True
+            else:
+                failed += 1
+                if on_progress:
+                    on_progress(idx, total, sim_id, 'failed')
+                continue
+
+        valid, error_msg = validate_field_point_counts(output_data, dataset_dir)
+        if not valid:
             np.savez_compressed(output_file, **output_data)
-            print(f"✓ Saved {output_file.name}")
+            logger.error(f"BATCH STOPPED: {error_msg}")
+            stopped_reason = error_msg
+            if on_progress:
+                on_progress(idx, total, sim_id, 'failed')
+            break
+
+        try:
+            np.savez_compressed(output_file, **output_data)
+            logger.info(f"Saved {output_file.name}")
             successful += 1
+            if on_progress:
+                on_progress(idx, total, sim_id, 'done')
         except Exception as e:
-            print(f"✗ Save failed: {e}")
+            logger.error(f"Save failed: {e}")
             failed += 1
+            if on_progress:
+                on_progress(idx, total, sim_id, 'failed')
             continue
 
-        # Progress update
         elapsed = time.time() - start_time
         avg_time = elapsed / idx
-        remaining_time = (total_sims - idx) * avg_time
-        print(f"\nProgress: {successful}/{total_sims} complete, {failed} failed")
-        print(f"Time: {elapsed/60:.1f}m elapsed, ~{remaining_time/60:.1f}m remaining")
+        remaining_time = (total - idx) * avg_time
+        logger.info(f"Progress: {successful}/{total} complete, {failed} failed, "
+                     f"~{remaining_time/60:.1f}m remaining")
 
-    # Final summary
-    print(f"\n{'='*70}")
-    print("REMAINING SIMULATIONS COMPLETE")
-    print("="*70)
-    print(f"  Successful: {successful}/{total_sims}")
-    print(f"  Failed: {failed}/{total_sims}")
-    print(f"  Total time: {(time.time() - start_time)/60:.1f} minutes")
-
-    ui_helpers.pause()
-
-
-def view_simulation_status(analysis, existing_results, ui_helpers):
-    """Display detailed simulation status."""
-    ui_helpers.clear_screen()
-    ui_helpers.print_header("SIMULATION STATUS")
-
-    print(f"\nTotal Required: {analysis['total_input_combinations']}")
-    print(f"Completed: {len(existing_results)}")
-    print(f"Remaining: {analysis['total_input_combinations'] - len(existing_results)}")
-
-    completeness = len(existing_results) / analysis['total_input_combinations'] * 100 if analysis['total_input_combinations'] > 0 else 0
-    print(f"\nProgress: {completeness:.1f}%")
-
-    # Show completed simulation IDs
-    if existing_results:
-        print("\nCompleted Simulations:")
-        sim_ids = sorted([int(f.stem.split('_')[1]) for f in existing_results])
-        print(f"  IDs: {sim_ids[:20]}{'...' if len(sim_ids) > 20 else ''}")
-
-        # Show file sizes
-        total_size = sum(f.stat().st_size for f in existing_results)
-        avg_size = total_size / len(existing_results)
-        print(f"\n  Total data size: {total_size / 1024**2:.1f} MB")
-        print(f"  Average per simulation: {avg_size / 1024**2:.1f} MB")
-
-    ui_helpers.pause()
+    elapsed = time.time() - start_time
+    summary = {
+        'successful': successful,
+        'failed': failed,
+        'total': total,
+        'elapsed': elapsed,
+        'stopped_reason': stopped_reason
+    }
+    logger.info(f"Batch complete: {successful}/{total} successful, {failed} failed, "
+                f"{elapsed/60:.1f} minutes")
+    return summary
 
 
-def extract_current_solution(solver, setup_data, dataset_dir, ui_helpers):
-    """Extract data from the currently loaded solution."""
-    ui_helpers.clear_screen()
-    ui_helpers.print_header("EXTRACT CURRENT SOLUTION")
+def extract_current_solution(solver, setup_data, dataset_dir, sim_id):
+    """
+    Extract data from the currently loaded Fluent solution.
 
-    try:
-        sim_id = input("\nEnter simulation ID for this solution: ").strip()
+    Returns
+    -------
+    (bool, Path or None)
+        (success, output_file_path)
+    """
+    logger.info(f"Extracting simulation {sim_id}")
 
-        if not sim_id.isdigit():
-            print("✗ Invalid simulation ID")
-            ui_helpers.pause()
-            return
+    output_data = extract_field_data(solver, setup_data, dataset_dir)
+    if output_data is None:
+        return False, None
 
-        sim_id_int = int(sim_id)
+    outputs_dir = dataset_dir
+    outputs_dir.mkdir(exist_ok=True)
 
-        print(f"\n{'='*70}")
-        print(f"EXTRACTING SIMULATION {sim_id_int}")
-        print("="*70)
+    if not _ensure_reference_coordinates(solver, setup_data, dataset_dir):
+        return False, None
 
-        # Extract field data
-        print("\nExtracting field data...")
-        output_data = extract_field_data(solver, setup_data, dataset_dir)
+    valid, error_msg = validate_field_point_counts(output_data, dataset_dir)
+    output_file = outputs_dir / f"sim_{sim_id:04d}.npz"
+    np.savez_compressed(output_file, **output_data)
 
-        if output_data is None:
-            print("\n✗ Failed to extract field data")
-            ui_helpers.pause()
-            return
+    if not valid:
+        logger.error(error_msg)
+        return False, output_file
 
-        # Save results
-        outputs_dir = dataset_dir / "dataset"
-        outputs_dir.mkdir(exist_ok=True)
-        output_file = outputs_dir / f"sim_{sim_id_int:04d}.npz"
-
-        np.savez_compressed(output_file, **output_data)
-
-        print(f"\n✓ Results saved to: {output_file.name}")
-        print(f"  Fields saved: {len(output_data)}")
-        print(f"  File size: {output_file.stat().st_size / 1024:.1f} KB")
-
-    except Exception as e:
-        print(f"\n✗ Error: {e}")
-        import traceback
-        traceback.print_exc()
-
-    ui_helpers.pause()
+    logger.info(f"Saved {output_file.name} ({len(output_data)} fields, "
+                f"{output_file.stat().st_size / 1024:.1f} KB)")
+    return True, output_file

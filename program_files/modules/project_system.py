@@ -2,399 +2,339 @@
 Project System Module
 =====================
 Handles project creation, opening, scanning, and management.
+All functions are GUI-agnostic.
 """
 
+import logging
 import json
+import shutil
+import time
 from pathlib import Path
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class WorkflowProject:
     """
     Represents a Workflow Surrogate project.
 
-    Project Structure:
-    ------------------
+    Flat project structure (no cases/ nesting):
+    --------------------------------------------
     project_folder/
-    ├── project_info.json          # Project metadata
-    └── cases/                     # Simulation cases (DOE configurations + models)
-        ├── case_name_1/
-        │   ├── model_setup.json
-        │   ├── output_parameters.json
-        │   ├── dataset/           # Simulation output data
-        │   │   └── sim_*.npz
-        │   └── models/            # Trained models for this case
-        │       ├── 3D_velocity_1.h5
-        │       ├── 2D_pressure_1.h5
-        │       └── ...
-        └── case_name_2/
+    +-- project_info.json
+    +-- model_setup.json
+    +-- output_parameters.json
+    +-- doe_samples.json
+    +-- dataset/
+    |   +-- coordinates.npz
+    |   +-- dataset_version.json
+    |   +-- sim_0001.npz
+    +-- models/
+    |   +-- outlet_temp_v3/
+    |       +-- *_nn.h5, *_nn.npz, *_pod.npz, *_metadata.json
+    +-- loss_curves/
+    +-- logs/
+        +-- residuals/
     """
 
     def __init__(self, project_path):
-        """
-        Initialize project.
-
-        Parameters
-        ----------
-        project_path : Path
-            Path to project folder
-        """
         self.project_path = Path(project_path)
         self.project_info_file = self.project_path / "project_info.json"
-        self.cases_dir = self.project_path / "cases"
-
         self.info = None
-        self.cases = []
+
+    # --- Paths ---
+
+    @property
+    def model_setup_file(self):
+        return self.project_path / "model_setup.json"
+
+    @property
+    def output_parameters_file(self):
+        return self.project_path / "output_parameters.json"
+
+    @property
+    def doe_samples_file(self):
+        return self.project_path / "doe_samples.json"
+
+    @property
+    def dataset_dir(self):
+        return self.project_path / "dataset"
+
+    @property
+    def models_dir(self):
+        return self.project_path / "models"
+
+    @property
+    def loss_curves_dir(self):
+        return self.project_path / "loss_curves"
+
+    @property
+    def logs_dir(self):
+        return self.project_path / "logs"
+
+    @property
+    def residuals_dir(self):
+        return self.logs_dir / "residuals"
+
+    @property
+    def fluent_cache_dir(self):
+        return self.project_path / ".cache" / "fluent_validation"
+
+    @property
+    def fluent_cache_index_file(self):
+        return self.fluent_cache_dir / "index.json"
+
+    # --- Lifecycle ---
 
     def create(self, project_name):
-        """
-        Create a new project.
-
-        Parameters
-        ----------
-        project_name : str
-            Name of the project
-
-        Returns
-        -------
-        bool
-            True if successful
-        """
+        """Create a new project. Returns True on success."""
         try:
-            # Create directories
             self.project_path.mkdir(parents=True, exist_ok=True)
-            self.cases_dir.mkdir(exist_ok=True)
+            self.dataset_dir.mkdir(exist_ok=True)
+            self.models_dir.mkdir(exist_ok=True)
+            self.loss_curves_dir.mkdir(exist_ok=True)
+            self.logs_dir.mkdir(exist_ok=True)
+            self.residuals_dir.mkdir(exist_ok=True)
 
-            # Create project info
             self.info = {
                 'project_name': project_name,
+                'case_file': None,
                 'created': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 'last_opened': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                'version': '1.0'
+                'version': '2.0'
             }
 
-            # Save project info
             with open(self.project_info_file, 'w') as f:
                 json.dump(self.info, f, indent=2)
 
+            logger.info(f"Project created: {project_name} at {self.project_path}")
             return True
-
         except Exception as e:
-            print(f"Error creating project: {e}")
+            logger.error(f"Error creating project: {e}")
             return False
 
     def load(self):
-        """
-        Load an existing project.
-
-        Returns
-        -------
-        bool
-            True if successful
-        """
+        """Load an existing project. Returns True on success."""
         try:
             if not self.project_info_file.exists():
                 return False
 
-            # Load project info
             with open(self.project_info_file, 'r') as f:
                 self.info = json.load(f)
 
-            # Update last opened
             self.info['last_opened'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             with open(self.project_info_file, 'w') as f:
                 json.dump(self.info, f, indent=2)
 
-            # Scan for datasets and models
-            self.scan()
+            # Ensure directories exist (in case of manual deletion)
+            self.dataset_dir.mkdir(exist_ok=True)
+            self.models_dir.mkdir(exist_ok=True)
+            self.loss_curves_dir.mkdir(exist_ok=True)
+            self.logs_dir.mkdir(exist_ok=True)
+            self.residuals_dir.mkdir(exist_ok=True)
 
+            logger.info(f"Project loaded: {self.info['project_name']}")
             return True
-
         except Exception as e:
-            print(f"Error loading project: {e}")
+            logger.error(f"Error loading project: {e}")
             return False
 
-    def scan(self):
+    # --- State scanning ---
+
+    def get_project_state(self):
         """
-        Scan project for cases.
+        Scan project files to determine workflow state.
+
+        Returns dict with booleans for each milestone:
+            has_case_file, has_inputs, has_outputs, has_doe,
+            has_simulations, has_models, sim_count, model_count
         """
-        self.cases = []
+        state = {
+            'has_case_file': False,
+            'has_inputs': False,
+            'has_outputs': False,
+            'has_doe': False,
+            'has_simulations': False,
+            'has_models': False,
+            'sim_count': 0,
+            'model_count': 0,
+        }
 
-        # Scan cases
-        if self.cases_dir.exists():
-            for case_dir in self.cases_dir.iterdir():
-                if case_dir.is_dir():
-                    case_info = self._scan_case(case_dir)
-                    if case_info:
-                        self.cases.append(case_info)
+        # Case file
+        case_file = self.info.get('case_file') if self.info else None
+        state['has_case_file'] = case_file is not None and Path(case_file).exists()
 
-    def _scan_case(self, case_dir):
-        """
-        Scan a case directory.
+        # Inputs / outputs
+        if self.model_setup_file.exists():
+            try:
+                with open(self.model_setup_file, 'r') as f:
+                    setup = json.load(f)
+                state['has_inputs'] = len(setup.get('model_inputs', [])) > 0
+            except Exception:
+                pass
 
-        Parameters
-        ----------
-        case_dir : Path
-            Case directory
+        if self.output_parameters_file.exists():
+            try:
+                with open(self.output_parameters_file, 'r') as f:
+                    out_params = json.load(f)
+                state['has_outputs'] = len(out_params.get('outputs', [])) > 0
+            except Exception:
+                pass
 
-        Returns
-        -------
-        dict or None
-            Case information
-        """
-        setup_file = case_dir / "model_setup.json"
+        # DOE
+        if self.doe_samples_file.exists():
+            try:
+                with open(self.doe_samples_file, 'r') as f:
+                    doe = json.load(f)
+                state['has_doe'] = len(doe.get('samples', [])) > 0
+            except Exception:
+                pass
 
-        if not setup_file.exists():
-            return None
+        # Simulations
+        if self.dataset_dir.exists():
+            sim_files = list(self.dataset_dir.glob("sim_*.npz"))
+            state['sim_count'] = len(sim_files)
+            state['has_simulations'] = state['sim_count'] > 0
 
+        # Models
+        if self.models_dir.exists():
+            model_dirs = [
+                d for d in self.models_dir.iterdir()
+                if d.is_dir() and list(d.glob("*_metadata.json"))
+            ]
+            state['model_count'] = len(model_dirs)
+            state['has_models'] = state['model_count'] > 0
+
+        return state
+
+    # --- Case file ---
+
+    def set_case_file(self, case_file_path):
+        """Store the .cas file reference path."""
+        self.info['case_file'] = str(case_file_path)
+        self._save_info()
+
+    def get_case_file(self):
+        """Get stored .cas file path, or None."""
+        path = self.info.get('case_file') if self.info else None
+        return path
+
+    def validate_case_file(self):
+        """Check if stored .cas path still exists. Returns (valid, path)."""
+        path = self.get_case_file()
+        if path is None:
+            return False, None
+        return Path(path).exists(), path
+
+    # --- Delete operations ---
+
+    def delete_dataset(self):
+        """Delete all simulation files and reset dataset. Returns True on success."""
         try:
-            with open(setup_file, 'r') as f:
-                setup_data = json.load(f)
+            if self.dataset_dir.exists():
+                for f in self.dataset_dir.glob("sim_*.npz"):
+                    f.unlink()
+                coords = self.dataset_dir / "coordinates.npz"
+                if coords.exists():
+                    coords.unlink()
+                version_file = self.dataset_dir / "dataset_version.json"
+                if version_file.exists():
+                    version_file.unlink()
 
-            # Count simulation files
-            dataset_dir = case_dir / "dataset"
-            num_sims = 0
-            if dataset_dir.exists():
-                num_sims = len(list(dataset_dir.glob("sim_*.npz")))
+            # Remove DOE samples too since they're tied to the dataset
+            if self.doe_samples_file.exists():
+                self.doe_samples_file.unlink()
 
-            # Count total required
-            from modules import doe_setup as doe
-            analysis = doe.analyze_setup_dimensions(setup_data)
-            total_required = analysis['total_input_combinations']
+            # Remove residuals
+            if self.residuals_dir.exists():
+                for f in self.residuals_dir.glob("*.npz"):
+                    f.unlink()
 
-            completeness = (num_sims / total_required * 100) if total_required > 0 else 0
-
-            # Count trained models
-            models_dir = case_dir / "models"
-            num_models = 0
-            if models_dir.exists():
-                num_models = len(list(models_dir.glob("*.h5"))) + len(list(models_dir.glob("*.npz")))
-
-            return {
-                'name': case_dir.name,
-                'path': case_dir,
-                'setup_file': setup_file,
-                'num_inputs': len(setup_data.get('model_inputs', [])),
-                'num_outputs': len(setup_data.get('model_outputs', [])),
-                'num_simulations': num_sims,
-                'total_required': total_required,
-                'completeness': completeness,
-                'num_models': num_models,
-                'created': setup_data.get('timestamp', 'Unknown')
-            }
-
+            logger.info("Dataset deleted")
+            return True
         except Exception as e:
-            print(f"Warning: Error scanning case {case_dir.name}: {e}")
-            return None
+            logger.error(f"Error deleting dataset: {e}")
+            return False
 
-    def get_case(self, case_name):
-        """
-        Get case by name.
-
-        Parameters
-        ----------
-        case_name : str
-            Case name
-
-        Returns
-        -------
-        dict or None
-            Case information
-        """
-        for case in self.cases:
-            if case['name'] == case_name:
-                return case
-        return None
-
-    def delete_case(self, case_name):
-        """
-        Delete a case.
-
-        Parameters
-        ----------
-        case_name : str
-            Case name
-
-        Returns
-        -------
-        bool
-            True if successful
-        """
-        case = self.get_case(case_name)
-        if not case:
+    def delete_model(self, model_dir_name):
+        """Delete a single trained model directory. Returns True on success."""
+        model_path = self.models_dir / model_dir_name
+        if not model_path.exists():
             return False
 
         try:
-            import shutil
-            import time
-
-            # On Windows, sometimes files are locked. Try with onerror handler
             def handle_remove_readonly(func, path, exc_info):
-                """Error handler for Windows readonly files."""
-                import os
-                import stat
-                # Try to remove readonly flag and retry
+                import os, stat
                 try:
                     os.chmod(path, stat.S_IWRITE)
                     func(path)
-                except:
+                except Exception:
                     pass
 
-            # First attempt with error handler
-            try:
-                shutil.rmtree(case['path'], onerror=handle_remove_readonly)
-            except PermissionError:
-                # If still fails, try manual deletion with retry
-                print("\n⚠ Permission error. Attempting to close any open files...")
-                time.sleep(1)  # Give OS time to release handles
-
-                # Try again
-                shutil.rmtree(case['path'], onerror=handle_remove_readonly)
-
-            self.scan()  # Refresh
+            shutil.rmtree(model_path, onerror=handle_remove_readonly)
+            logger.info(f"Deleted model: {model_dir_name}")
             return True
         except Exception as e:
-            print(f"Error deleting case: {e}")
-            print("\nTroubleshooting tips:")
-            print("  1. Close any programs that might have files open (Excel, editors, etc.)")
-            print("  2. Close the Fluent case if it's still running")
-            print("  3. Try deleting the folder manually in File Explorer")
+            logger.error(f"Error deleting model {model_dir_name}: {e}")
             return False
 
+    def delete_all_models(self):
+        """Delete all trained models. Returns True on success."""
+        try:
+            if self.models_dir.exists():
+                for d in self.models_dir.iterdir():
+                    if d.is_dir():
+                        shutil.rmtree(d)
+            logger.info("All models deleted")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting all models: {e}")
+            return False
 
-def create_new_project(ui_helpers):
+    # --- Internal ---
+
+    def _save_info(self):
+        """Persist project_info.json."""
+        with open(self.project_info_file, 'w') as f:
+            json.dump(self.info, f, indent=2)
+
+
+def create_project(project_path, project_name):
     """
-    Create a new project interactively.
-
-    Parameters
-    ----------
-    ui_helpers : module
-        UI helpers module
-
-    Returns
-    -------
-    WorkflowProject or None
-        Created project
-    """
-    from tkinter import Tk, filedialog
-
-    ui_helpers.clear_screen()
-    ui_helpers.print_header("CREATE NEW PROJECT")
-
-    # Get project name
-    project_name = input("\nEnter project name: ").strip()
-    if not project_name:
-        print("\n[X] Project name cannot be empty")
-        ui_helpers.pause()
-        return None
-
-    # Select parent directory
-    print("\nSelect parent directory for project...")
-    Tk().withdraw()
-
-    parent_dir = filedialog.askdirectory(
-        title="Select Parent Directory for Project"
-    )
-
-    if not parent_dir:
-        print("\n[X] No directory selected")
-        ui_helpers.pause()
-        return None
-
-    # Create project folder
-    project_folder = Path(parent_dir) / project_name
-
-    if project_folder.exists():
-        overwrite = input(f"\n[WARNING] Folder '{project_name}' already exists. Overwrite? [y/N]: ").strip().lower()
-        if overwrite != 'y':
-            print("\n[X] Project creation cancelled")
-            ui_helpers.pause()
-            return None
-
-    # Create project
-    project = WorkflowProject(project_folder)
-
-    if project.create(project_name):
-        print(f"\n✓ Project created successfully!")
-        print(f"  Location: {project_folder}")
-        ui_helpers.pause()
-        return project
-    else:
-        print(f"\n✗ Failed to create project")
-        ui_helpers.pause()
-        return None
-
-
-def open_existing_project(ui_helpers):
-    """
-    Open an existing project from file explorer.
-
-    Parameters
-    ----------
-    ui_helpers : module
-        UI helpers module
-
-    Returns
-    -------
-    WorkflowProject or None
-        Opened project
-    """
-    from tkinter import Tk, filedialog
-
-    ui_helpers.clear_screen()
-    ui_helpers.print_header("OPEN EXISTING PROJECT")
-
-    print("\nSelect project folder...")
-    Tk().withdraw()
-
-    project_folder = filedialog.askdirectory(
-        title="Select Project Folder"
-    )
-
-    if not project_folder:
-        print("\n✗ No folder selected")
-        ui_helpers.pause()
-        return None
-
-    project_folder = Path(project_folder)
-
-    # Check if it's a valid project
-    project = WorkflowProject(project_folder)
-
-    if project.load():
-        print(f"\n✓ Project opened successfully!")
-        print(f"  Name: {project.info['project_name']}")
-        print(f"  Location: {project_folder}")
-        print(f"  Created: {project.info['created']}")
-        ui_helpers.pause()
-        return project
-    else:
-        print(f"\n✗ Invalid project folder (project_info.json not found)")
-        ui_helpers.pause()
-        return None
-
-
-def open_recent_project(project_path, ui_helpers):
-    """
-    Open a recent project.
+    Create a new project.
 
     Parameters
     ----------
     project_path : Path or str
-        Project path
-    ui_helpers : module
-        UI helpers module
+        Full path to project folder
+    project_name : str
+        Display name for the project
 
     Returns
     -------
     WorkflowProject or None
-        Opened project
     """
     project = WorkflowProject(project_path)
+    if project.create(project_name):
+        return project
+    return None
 
+
+def open_project(project_path):
+    """
+    Open an existing project.
+
+    Parameters
+    ----------
+    project_path : Path or str
+        Path to project folder
+
+    Returns
+    -------
+    WorkflowProject or None
+    """
+    project = WorkflowProject(project_path)
     if project.load():
         return project
-    else:
-        print(f"\n✗ Could not open project: {project_path}")
-        ui_helpers.pause()
-        return None
+    return None

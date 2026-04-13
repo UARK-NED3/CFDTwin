@@ -32,3 +32,7 @@ __pycache__/
 
 #python scripts
 visualize_pod.py
+
+# Test and project data
+tests/
+Testing/
