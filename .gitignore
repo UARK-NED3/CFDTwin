@@ -36,3 +36,6 @@ visualize_pod.py
 # Test and project data
 tests/
 Testing/
+
+# User settings
+program_files/user_settings.json
