@@ -46,27 +46,7 @@ The surrogate workflow assumes steady-state, fixed-mesh simulations. Several Flu
 
 ---
 
-## 3. Validate Models
-
-**Risk**: Medium
-
-After the recent refactors to the trainer (new DOE format, output parameter shape changes, POD reducer, metric reporting), there's no end-to-end check that models are actually learning the right relationship. The R2 numbers currently look suspicious in some runs (e.g. near-zero or negative on report defs).
-
-**What to verify**:
-- Inputs passed to `nn.predict()` are scaled and ordered the same way as during training
-- Output dimensionality matches expectations (POD vs direct)
-- DOE parameter ordering is consistent between `doe_samples.json`, the simulation runner, and the trainer
-- Predictions at known dataset points should match the recorded sim outputs to near machine precision
-- Report def models predict a single scalar that matches the Fluent value
-
-**Mitigation ideas**:
-- Add a sanity check in the trainer: after training, predict on a train sample and compare to the stored target
-- Build a "ground truth" test in the Validate page that picks a dataset point, predicts, and compares to the actual sim NPZ
-- Add a unit test that trains a trivial model on synthetic linear data and checks R2 > 0.99
-
----
-
-## 4. Test Run Fluent Comparison System
+## 3. Test Run Fluent Comparison System
 
 **Risk**: Medium
 
