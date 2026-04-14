@@ -1,4 +1,4 @@
-# Fluent PODNN Surrogate Builder
+# CFDTwin
 
 Wizard-based desktop app for building neural-network surrogate models from ANSYS Fluent simulations. Load a `.cas` file, sample the parameter space, run the batch sim, train a POD+NN model, and validate — all in one GUI.
 
