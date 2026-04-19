@@ -1,0 +1,9 @@
+{
+    "assembly_path": "coldplate.SLDASM",
+    "cooler_part_filename": "Cooler.SLDPRT",
+    "equation_var_name": "InletRampHeight",
+    "manifold_pipe_height_mm": 11.225,
+    "ramp_min_mm": 0.5,
+    "ramp_max_fraction": 0.8,
+    "n_samples": 10
+}

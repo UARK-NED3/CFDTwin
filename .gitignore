@@ -39,3 +39,8 @@ Testing/
 
 # User settings
 program_files/user_settings.json
+
+# SolidWorks lock files and per-validation output/backup folders
+**/~$*
+validations/*/output/
+validations/*/Backup/
