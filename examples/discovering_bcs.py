@@ -35,23 +35,32 @@ for bc_type in bc_settings.get_state():
 def walk_settable(obj, prefix="", depth=4):
     """Recursively find leaf settings that have a writable .value, yielding
     (dotted-path, type-name) pairs. Used to show what set_inputs's rich-dict
-    `parameter_path` can target on a given BC."""
+    `parameter_path` can target on a given BC.
+
+    Skips PyFluent nodes that raise InactiveObjectError (settings only
+    relevant under another flag — e.g. gauge_pressure is inactive when the
+    BC isn't pressure-driven).
+    """
     if depth <= 0:
         return
-    if not hasattr(obj, "child_names"):
+    try:
+        names = obj.child_names
+    except Exception:
         return
-    for name in obj.child_names:
+    for name in names:
         if name in ("child_names", "command_names"):
             continue
+        path = f"{prefix}.{name}" if prefix else name
         try:
             child = getattr(obj, name)
-        except Exception:
-            continue
-        path = f"{prefix}.{name}" if prefix else name
-        if hasattr(child, "value"):
-            yield path, type(child).__name__
-        else:
+            if hasattr(child, "value"):
+                yield path, type(child).__name__
+                continue
             yield from walk_settable(child, prefix=path, depth=depth - 1)
+        except Exception:
+            # Inactive node, or settings tree disagrees with what's exposed
+            # at this point in the case. Either way, skip silently.
+            continue
 
 
 # --- Settable parameter paths on each velocity-inlet ---------------------
