@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../../assets/logo_icon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -29,7 +29,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -885,15 +885,15 @@ count, NN architecture, and hyperparameters per individual output.</p>
 </blockquote>
 <h2 id="the-three-shapes-of-outputs">The three shapes of <code>outputs=</code></h2>
 <h3 id="1-omit-it-train-every-output-with-defaults">1. Omit it — train every output with defaults</h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">project</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;run1&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">project</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">model_name</span><span class="o">=</span><span class="s2">"run1"</span><span class="p">)</span>
 </code></pre></div>
 <p>Discovers every <code>(location, field)</code> pair available from your simulation
 data, trains a model for each, uses default POD modes (auto-detected from
 data shape) and the default NN preset for the output type.</p>
 <h3 id="2-list-of-strings-train-a-subset-defaults">2. List of strings — train a subset, defaults</h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">project</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;run1&quot;</span><span class="p">,</span> <span class="n">outputs</span><span class="o">=</span><span class="p">[</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="s2">&quot;mid_plane_temperature&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="s2">&quot;outlet_temp_value&quot;</span><span class="p">,</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">project</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">model_name</span><span class="o">=</span><span class="s2">"run1"</span><span class="p">,</span> <span class="n">outputs</span><span class="o">=</span><span class="p">[</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="s2">"mid_plane_temperature"</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="s2">"outlet_temp_value"</span><span class="p">,</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">])</span>
 </code></pre></div>
 <p>Same defaults as above, but only the named outputs. Keys are
@@ -901,16 +901,16 @@ data shape) and the default NN preset for the output type.</p>
 <code>project.train(model_name="dryrun")</code> (which fails with a list when there's
 no sim data) or by reading your <code>output_parameters.json</code>.</p>
 <h3 id="3-dict-per-output-overrides">3. Dict — per-output overrides</h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">project</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;run1&quot;</span><span class="p">,</span> <span class="n">outputs</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="s2">&quot;mid_plane_temperature&quot;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>        <span class="s2">&quot;pod&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;modes&quot;</span><span class="p">:</span> <span class="mi">20</span><span class="p">},</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>        <span class="s2">&quot;nn&quot;</span><span class="p">:</span>  <span class="p">{</span><span class="s2">&quot;learning_rate&quot;</span><span class="p">:</span> <span class="mf">5e-4</span><span class="p">,</span> <span class="s2">&quot;hidden_layers&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">128</span><span class="p">,</span> <span class="mi">64</span><span class="p">]},</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">project</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">model_name</span><span class="o">=</span><span class="s2">"run1"</span><span class="p">,</span> <span class="n">outputs</span><span class="o">=</span><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="s2">"mid_plane_temperature"</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>        <span class="s2">"pod"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"modes"</span><span class="p">:</span> <span class="mi">20</span><span class="p">},</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>        <span class="s2">"nn"</span><span class="p">:</span>  <span class="p">{</span><span class="s2">"learning_rate"</span><span class="p">:</span> <span class="mf">5e-4</span><span class="p">,</span> <span class="s2">"hidden_layers"</span><span class="p">:</span> <span class="p">[</span><span class="mi">128</span><span class="p">,</span> <span class="mi">64</span><span class="p">]},</span>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="p">},</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="s2">&quot;mid_plane_velocity-magnitude&quot;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>        <span class="s2">&quot;pod&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;variance&quot;</span><span class="p">:</span> <span class="mf">0.99</span><span class="p">},</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="s2">"mid_plane_velocity-magnitude"</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>        <span class="s2">"pod"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"variance"</span><span class="p">:</span> <span class="mf">0.99</span><span class="p">},</span>
 <a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="p">},</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="s2">&quot;outlet_temp_value&quot;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>        <span class="s2">&quot;nn&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;preset&quot;</span><span class="p">:</span> <span class="s2">&quot;1d&quot;</span><span class="p">},</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="s2">"outlet_temp_value"</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>        <span class="s2">"nn"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"preset"</span><span class="p">:</span> <span class="s2">"1d"</span><span class="p">},</span>
 <a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="p">},</span>
 <a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="p">})</span>
 </code></pre></div>
@@ -921,11 +921,11 @@ with defaults: <code>"foo": {}</code>.</p>
 <p>POD reduces a high-dimensional field to a small number of modes before
 the NN learns to predict them. Two ways to specify the truncation:</p>
 <p><strong>Fixed mode count</strong> — same model size every time:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="s2">&quot;mid_plane_temperature&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;pod&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;modes&quot;</span><span class="p">:</span> <span class="mi">20</span><span class="p">}}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="s2">"mid_plane_temperature"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"pod"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"modes"</span><span class="p">:</span> <span class="mi">20</span><span class="p">}}</span>
 </code></pre></div>
 <p><strong>Variance fraction</strong> — retain enough modes to capture this fraction of
 the total variance. The number of modes varies between runs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="s2">&quot;mid_plane_temperature&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;pod&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;variance&quot;</span><span class="p">:</span> <span class="mf">0.99</span><span class="p">}}</span>   <span class="c1"># 99% variance</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="s2">"mid_plane_temperature"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"pod"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"variance"</span><span class="p">:</span> <span class="mf">0.99</span><span class="p">}}</span>   <span class="c1"># 99% variance</span>
 </code></pre></div>
 <p>Specifying both raises an error. Pick one.</p>
 <p>When in doubt, start with <strong><code>{"variance": 0.99}</code></strong> for a defensible default,
@@ -936,11 +936,11 @@ layers, dropout, learning rate, batch size, and early-stopping patience for
 its target output dimensionality. The preset is auto-selected from the
 output type.</p>
 <p>You override individual fields without giving up the preset:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="s2">&quot;mid_plane_temperature&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;nn&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;learning_rate&quot;</span><span class="p">:</span> <span class="mf">5e-4</span><span class="p">}}</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1"># Uses the 2D preset&#39;s hidden layers, dropout, etc., but with a smaller LR.</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="s2">"mid_plane_temperature"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"nn"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"learning_rate"</span><span class="p">:</span> <span class="mf">5e-4</span><span class="p">}}</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1"># Uses the 2D preset's hidden layers, dropout, etc., but with a smaller LR.</span>
 </code></pre></div>
 <p>Or switch the base preset:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="s2">&quot;outlet_temp_value&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;nn&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;preset&quot;</span><span class="p">:</span> <span class="s2">&quot;1d&quot;</span><span class="p">,</span> <span class="s2">&quot;learning_rate&quot;</span><span class="p">:</span> <span class="mf">1e-3</span><span class="p">}}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="s2">"outlet_temp_value"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"nn"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"preset"</span><span class="p">:</span> <span class="s2">"1d"</span><span class="p">,</span> <span class="s2">"learning_rate"</span><span class="p">:</span> <span class="mf">1e-3</span><span class="p">}}</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># Falls back to the 1D preset (since this is a scalar) and overrides LR.</span>
 </code></pre></div>
 <p>Available NN config keys (any preset's defaults, override individually):</p>
@@ -955,7 +955,7 @@ output type.</p>
 </ul>
 <h2 id="top-level-training-defaults">Top-level training defaults</h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">project</span><span class="o">.</span><span class="n">train</span><span class="p">(</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;run1&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="n">model_name</span><span class="o">=</span><span class="s2">"run1"</span><span class="p">,</span>
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="n">outputs</span><span class="o">=...</span><span class="p">,</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">epochs</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span>                 <span class="c1"># max epochs (early stopping usually halts sooner)</span>
 <a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">test_size</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span>              <span class="c1"># fraction held out for test metrics</span>
@@ -965,7 +965,7 @@ output type.</p>
 </code></pre></div>
 <p>These are global defaults. <code>outputs={...}</code> overrides per output.</p>
 <h2 id="reading-the-result">Reading the result</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">project</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;run1&quot;</span><span class="p">,</span> <span class="n">outputs</span><span class="o">=</span><span class="p">{</span><span class="o">...</span><span class="p">})</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">project</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">model_name</span><span class="o">=</span><span class="s2">"run1"</span><span class="p">,</span> <span class="n">outputs</span><span class="o">=</span><span class="p">{</span><span class="o">...</span><span class="p">})</span>
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">best_model</span><span class="p">()</span><span class="o">.</span><span class="n">model_name</span><span class="p">)</span>        <span class="c1"># highest test R²</span>
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">models</span><span class="p">:</span>
@@ -1023,7 +1023,7 @@ output type.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.expand", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

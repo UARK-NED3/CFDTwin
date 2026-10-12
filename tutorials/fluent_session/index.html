@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../../assets/logo_icon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -29,7 +29,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -857,40 +857,40 @@ PyFluent calls below and returns BCs + Fluent input parameters (named
 expressions flagged <code>input_parameter=True</code>) as one list, already grouped by
 category:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">cfdtwin</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">project</span> <span class="o">=</span> <span class="n">cfdtwin</span><span class="o">.</span><span class="n">Project</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s2">&quot;./study&quot;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;elbow&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">project</span><span class="o">.</span><span class="n">set_case_file</span><span class="p">(</span><span class="s2">&quot;my_case.cas.h5&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">project</span> <span class="o">=</span> <span class="n">cfdtwin</span><span class="o">.</span><span class="n">Project</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s2">"./study"</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"elbow"</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">project</span><span class="o">.</span><span class="n">set_case_file</span><span class="p">(</span><span class="s2">"my_case.cas.h5"</span><span class="p">)</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">project</span><span class="o">.</span><span class="n">connect_fluent</span><span class="p">()</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">project</span><span class="o">.</span><span class="n">list_available_inputs</span><span class="p">():</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># [{&#39;name&#39;: &#39;cold-inlet&#39;, &#39;type&#39;: &#39;Velocity Inlet&#39;, &#39;category&#39;: &#39;Boundary Condition&#39;},</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1">#  {&#39;name&#39;: &#39;inlet_vel&#39;, &#39;type&#39;: &#39;Input Parameter&#39;, &#39;category&#39;: &#39;Input Parameter&#39;,</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="c1">#   &#39;unit&#39;: &#39;m/s&#39;, &#39;current_value&#39;: 0.4, &#39;definition&#39;: &#39;0.4 [m/s]&#39;}, ...]</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># [{'name': 'cold-inlet', 'type': 'Velocity Inlet', 'category': 'Boundary Condition'},</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1">#  {'name': 'inlet_vel', 'type': 'Input Parameter', 'category': 'Input Parameter',</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="c1">#   'unit': 'm/s', 'current_value': 0.4, 'definition': '0.4 [m/s]'}, ...]</span>
 </code></pre></div>
 <p>Each entry can be fed straight back into <code>set_inputs</code> by attaching a <code>range</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">avail</span> <span class="o">=</span> <span class="p">{</span><span class="n">x</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]:</span> <span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">project</span><span class="o">.</span><span class="n">list_available_inputs</span><span class="p">()}</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">ip</span> <span class="o">=</span> <span class="n">avail</span><span class="p">[</span><span class="s1">&#39;inlet_vel&#39;</span><span class="p">]</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">project</span><span class="o">.</span><span class="n">set_inputs</span><span class="p">({</span><span class="n">ip</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]:</span> <span class="p">{</span><span class="o">**</span><span class="n">ip</span><span class="p">,</span> <span class="s1">&#39;range&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">)}})</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">avail</span> <span class="o">=</span> <span class="p">{</span><span class="n">x</span><span class="p">[</span><span class="s1">'name'</span><span class="p">]:</span> <span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">project</span><span class="o">.</span><span class="n">list_available_inputs</span><span class="p">()}</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">ip</span> <span class="o">=</span> <span class="n">avail</span><span class="p">[</span><span class="s1">'inlet_vel'</span><span class="p">]</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">project</span><span class="o">.</span><span class="n">set_inputs</span><span class="p">({</span><span class="n">ip</span><span class="p">[</span><span class="s1">'name'</span><span class="p">]:</span> <span class="p">{</span><span class="o">**</span><span class="n">ip</span><span class="p">,</span> <span class="s1">'range'</span><span class="p">:</span> <span class="p">(</span><span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">)}})</span>
 </code></pre></div>
 <p>The rest of this page covers the raw PyFluent calls if you need detail the
 helper doesn't surface (per-BC sub-parameter paths, surfaces, report defs).</p>
 <h2 id="connect-with-pyfluent-and-load-your-case">Connect with PyFluent and load your case</h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">ansys.fluent.core</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pyfluent</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">solver</span> <span class="o">=</span> <span class="n">pyfluent</span><span class="o">.</span><span class="n">launch_fluent</span><span class="p">(</span><span class="n">precision</span><span class="o">=</span><span class="s2">&quot;double&quot;</span><span class="p">,</span> <span class="n">processor_count</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>                                <span class="n">dimension</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;solver&quot;</span><span class="p">)</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">solver</span><span class="o">.</span><span class="n">settings</span><span class="o">.</span><span class="n">file</span><span class="o">.</span><span class="n">read_case</span><span class="p">(</span><span class="n">file_name</span><span class="o">=</span><span class="s2">&quot;my_case.cas.h5&quot;</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">solver</span> <span class="o">=</span> <span class="n">pyfluent</span><span class="o">.</span><span class="n">launch_fluent</span><span class="p">(</span><span class="n">precision</span><span class="o">=</span><span class="s2">"double"</span><span class="p">,</span> <span class="n">processor_count</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>                                <span class="n">dimension</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"solver"</span><span class="p">)</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">solver</span><span class="o">.</span><span class="n">settings</span><span class="o">.</span><span class="n">file</span><span class="o">.</span><span class="n">read_case</span><span class="p">(</span><span class="n">file_name</span><span class="o">=</span><span class="s2">"my_case.cas.h5"</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="list-boundary-conditions">List boundary conditions</h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">bc_settings</span> <span class="o">=</span> <span class="n">solver</span><span class="o">.</span><span class="n">settings</span><span class="o">.</span><span class="n">setup</span><span class="o">.</span><span class="n">boundary_conditions</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">for</span> <span class="n">bc_type</span> <span class="ow">in</span> <span class="n">bc_settings</span><span class="o">.</span><span class="n">get_state</span><span class="p">():</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">bc_group</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">bc_settings</span><span class="p">,</span> <span class="n">bc_type</span><span class="p">)</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="k">for</span> <span class="n">bc_name</span> <span class="ow">in</span> <span class="n">bc_group</span><span class="o">.</span><span class="n">get_state</span><span class="p">():</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">bc_name</span><span class="si">}</span><span class="s2">  type=</span><span class="si">{</span><span class="n">bc_type</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">bc_name</span><span class="si">}</span><span class="s2">  type=</span><span class="si">{</span><span class="n">bc_type</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
 <p>Each <code>bc_name</code> is what you'll put before the <code>|</code> in <code>set_inputs</code> keys.</p>
 <h2 id="list-parameters-under-one-bc">List parameters under one BC</h2>
 <p>For each BC you care about, inspect its writable parameters:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">inlet</span> <span class="o">=</span> <span class="n">solver</span><span class="o">.</span><span class="n">settings</span><span class="o">.</span><span class="n">setup</span><span class="o">.</span><span class="n">boundary_conditions</span><span class="o">.</span><span class="n">velocity_inlet</span><span class="p">[</span><span class="s2">&quot;cold-inlet&quot;</span><span class="p">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">inlet</span> <span class="o">=</span> <span class="n">solver</span><span class="o">.</span><span class="n">settings</span><span class="o">.</span><span class="n">setup</span><span class="o">.</span><span class="n">boundary_conditions</span><span class="o">.</span><span class="n">velocity_inlet</span><span class="p">[</span><span class="s2">"cold-inlet"</span><span class="p">]</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">inlet</span><span class="o">.</span><span class="n">get_state</span><span class="p">())</span>        <span class="c1"># full dict; pick the one you want to vary</span>
 </code></pre></div>
 <p>Velocity-inlet typically has <code>momentum.velocity_magnitude.value</code>,
@@ -898,10 +898,10 @@ helper doesn't surface (per-BC sub-parameter paths, surfaces, report defs).</p>
 dotted path you see is the <code>parameter_path</code> you'd put in the rich-dict
 form of <code>set_inputs</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">project</span><span class="o">.</span><span class="n">set_inputs</span><span class="p">({</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="s2">&quot;cold-inlet|momentum &gt; velocity_magnitude&quot;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>        <span class="s2">&quot;range&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.6</span><span class="p">),</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>        <span class="s2">&quot;bc_type&quot;</span><span class="p">:</span> <span class="s2">&quot;velocity-inlet&quot;</span><span class="p">,</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>        <span class="s2">&quot;parameter_path&quot;</span><span class="p">:</span> <span class="s2">&quot;momentum.velocity_magnitude.value&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="s2">"cold-inlet|momentum &gt; velocity_magnitude"</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>        <span class="s2">"range"</span><span class="p">:</span> <span class="p">(</span><span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.6</span><span class="p">),</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>        <span class="s2">"bc_type"</span><span class="p">:</span> <span class="s2">"velocity-inlet"</span><span class="p">,</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>        <span class="s2">"parameter_path"</span><span class="p">:</span> <span class="s2">"momentum.velocity_magnitude.value"</span><span class="p">,</span>
 <a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="p">},</span>
 <a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="p">})</span>
 </code></pre></div>
@@ -914,10 +914,10 @@ form of <code>set_inputs</code>:</p>
 </code></pre></div>
 <p>These names go into <code>set_outputs(...)</code> <code>name</code> fields:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">project</span><span class="o">.</span><span class="n">set_outputs</span><span class="p">([</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;outlet&quot;</span><span class="p">,</span> <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;Surface&quot;</span><span class="p">,</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>     <span class="s2">&quot;field_variables&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;temperature&quot;</span><span class="p">,</span> <span class="s2">&quot;velocity-magnitude&quot;</span><span class="p">]},</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;fluid&quot;</span><span class="p">,</span> <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;Cell Zone&quot;</span><span class="p">,</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>     <span class="s2">&quot;field_variables&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;temperature&quot;</span><span class="p">]},</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"outlet"</span><span class="p">,</span> <span class="s2">"category"</span><span class="p">:</span> <span class="s2">"Surface"</span><span class="p">,</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>     <span class="s2">"field_variables"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"temperature"</span><span class="p">,</span> <span class="s2">"velocity-magnitude"</span><span class="p">]},</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"fluid"</span><span class="p">,</span> <span class="s2">"category"</span><span class="p">:</span> <span class="s2">"Cell Zone"</span><span class="p">,</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>     <span class="s2">"field_variables"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"temperature"</span><span class="p">]},</span>
 <a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="p">])</span>
 </code></pre></div>
 <h2 id="list-report-definitions">List report definitions</h2>
@@ -926,7 +926,7 @@ form of <code>set_inputs</code>:</p>
 </code></pre></div>
 <p>For each report def name you can use:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">project</span><span class="o">.</span><span class="n">set_outputs</span><span class="p">([</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;outlet_avg_temp&quot;</span><span class="p">,</span> <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;Report Definition&quot;</span><span class="p">},</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"outlet_avg_temp"</span><span class="p">,</span> <span class="s2">"category"</span><span class="p">:</span> <span class="s2">"Report Definition"</span><span class="p">},</span>
 <a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="p">])</span>
 </code></pre></div>
 <h2 id="when-youre-done">When you're done</h2>
@@ -988,7 +988,7 @@ when it's time to run sims.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.expand", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

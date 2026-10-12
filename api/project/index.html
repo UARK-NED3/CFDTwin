@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../../assets/logo_icon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -29,7 +29,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -1266,7 +1266,7 @@
   </span>
 
 </h3>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">create</span><span class="p">(</span><span class="n">project_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s1">&#39;Project&#39;</span>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">create</span><span class="p">(</span><span class="n">project_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s1">'Project'</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -1290,7 +1290,7 @@
   </span>
 
 </h3>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">open</span><span class="p">(</span><span class="n">project_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s1">&#39;Project&#39;</span>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">open</span><span class="p">(</span><span class="n">project_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s1">'Project'</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -1338,25 +1338,25 @@
         <p>Declare inputs (no Fluent connection required).</p>
 <p>Three accepted entry shapes — choose one per input:</p>
 <div class="highlight"><pre><span></span><code># 1. BC range tuple (lo, hi). bc_type and parameter_path resolve at run time.
-project.set_inputs({&quot;inlet|velocity&quot;: (0.1, 1.0)})
+project.set_inputs({"inlet|velocity": (0.1, 1.0)})
 
 # 2. BC rich dict — fully declarative, no Fluent needed at any stage.
 project.set_inputs({
-    &quot;inlet|velocity&quot;: {
-        &quot;range&quot;: (0.1, 1.0),
-        &quot;bc_type&quot;: &quot;velocity-inlet&quot;,
-        &quot;parameter_path&quot;: &quot;vmag.value&quot;,
+    "inlet|velocity": {
+        "range": (0.1, 1.0),
+        "bc_type": "velocity-inlet",
+        "parameter_path": "vmag.value",
     },
 })
 
 # 3. Fluent input parameter (named expression with input_parameter=True).
-# Key is the expression name; pass category=&quot;Input Parameter&quot; and
+# Key is the expression name; pass category="Input Parameter" and
 # the unit string. Easiest path: feed back from list_available_inputs().
 project.set_inputs({
-    &quot;inlet_vel&quot;: {
-        &quot;range&quot;: (0.2, 0.8),
-        &quot;category&quot;: &quot;Input Parameter&quot;,
-        &quot;unit&quot;: &quot;m/s&quot;,
+    "inlet_vel": {
+        "range": (0.2, 0.8),
+        "category": "Input Parameter",
+        "unit": "m/s",
     },
 })
 </code></pre></div>
@@ -1389,7 +1389,7 @@ Each returned dict has at least <code>name</code>, <code>type</code>, <code>cate
 adding a <code>range</code>::</p>
 <div class="highlight"><pre><span></span><code>project.connect_fluent()
 for item in project.list_available_inputs():
-    print(item[&#39;name&#39;], item[&#39;category&#39;])
+    print(item['name'], item['category'])
 </code></pre></div>
 
 
@@ -1413,11 +1413,11 @@ for item in project.list_available_inputs():
         <p>Declare outputs to extract from each simulation.</p>
 <p>Each entry is a dict:</p>
 <div class="highlight"><pre><span></span><code>project.set_outputs([
-    {&quot;name&quot;: &quot;outlet_temp&quot;, &quot;category&quot;: &quot;Report Definition&quot;},
-    {&quot;name&quot;: &quot;mid_plane&quot;,  &quot;category&quot;: &quot;Surface&quot;,
-     &quot;field_variables&quot;: [&quot;temperature&quot;, &quot;velocity-magnitude&quot;]},
-    {&quot;name&quot;: &quot;fluid&quot;,      &quot;category&quot;: &quot;Cell Zone&quot;,
-     &quot;field_variables&quot;: [&quot;temperature&quot;]},
+    {"name": "outlet_temp", "category": "Report Definition"},
+    {"name": "mid_plane",  "category": "Surface",
+     "field_variables": ["temperature", "velocity-magnitude"]},
+    {"name": "fluid",      "category": "Cell Zone",
+     "field_variables": ["temperature"]},
 ])
 </code></pre></div>
 <p>category must be one of: "Report Definition", "Surface", "Cell Zone".
@@ -1437,7 +1437,7 @@ Report Definition (the report's value is the only output).</p>
 
 
 </h3>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">generate_doe</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;lhs&#39;</span><span class="p">,</span> <span class="n">points_per_param</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">42</span><span class="p">,</span> <span class="n">append</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">generate_doe</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'lhs'</span><span class="p">,</span> <span class="n">points_per_param</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">42</span><span class="p">,</span> <span class="n">append</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -1548,19 +1548,19 @@ outputs : None | list[str] | dict, default None
     <strong>None</strong> = train every (location, field_variable) in the project,
     with defaults.</p>
 <div class="highlight"><pre><span></span><code>**list of str** = train just those model_keys
-(``&quot;&lt;location&gt;_&lt;field&gt;&quot;``), with defaults::
+(``"&lt;location&gt;_&lt;field&gt;"``), with defaults::
 
-    outputs=[&quot;mid_plane_temperature&quot;, &quot;outlet_temp_value&quot;]
+    outputs=["mid_plane_temperature", "outlet_temp_value"]
 
 **dict** = per-output overrides::
 
     outputs={
-        &quot;mid_plane_temperature&quot;: {
-            &quot;pod&quot;: {&quot;modes&quot;: 20},          # OR {&quot;variance&quot;: 0.99}
-            &quot;nn&quot;:  {&quot;learning_rate&quot;: 5e-4, &quot;hidden_layers&quot;: [128, 64]},
+        "mid_plane_temperature": {
+            "pod": {"modes": 20},          # OR {"variance": 0.99}
+            "nn":  {"learning_rate": 5e-4, "hidden_layers": [128, 64]},
         },
-        &quot;outlet_temp_value&quot;: {
-            &quot;nn&quot;: {&quot;preset&quot;: &quot;1d&quot;},        # switch base preset
+        "outlet_temp_value": {
+            "nn": {"preset": "1d"},        # switch base preset
         },
     }
 </code></pre></div>
@@ -1593,13 +1593,13 @@ excluded_ids : list[int], optional
     Name of the model directory under <code>project/models/</code>.
 params : dict | list[dict]
     <strong>dict</strong> — single sample::</p>
-<div class="highlight"><pre><span></span><code>    project.predict(&quot;my_run&quot;, {&quot;inlet|velocity&quot;: 0.5})
+<div class="highlight"><pre><span></span><code>    project.predict("my_run", {"inlet|velocity": 0.5})
 
 **list of dict** — batch (one prediction per dict)::
 
-    project.predict(&quot;my_run&quot;, [
-        {&quot;inlet|velocity&quot;: 0.5},
-        {&quot;inlet|velocity&quot;: 0.7},
+    project.predict("my_run", [
+        {"inlet|velocity": 0.5},
+        {"inlet|velocity": 0.7},
     ])
 </code></pre></div>
 
@@ -1753,7 +1753,7 @@ replaced (after checking that source exists).</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.expand", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>
