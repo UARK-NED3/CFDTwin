@@ -8,6 +8,9 @@ Two interfaces, one pipeline:
 - **GUI** — wizard-based desktop app: Setup → DOE → Simulate → Train → Analyze.
 - **API** — Python library exposing the same pipeline as `cfdtwin.Project` methods.
 
+Repository scope, evidence, and reuse boundaries are also available in the
+[NED3 resource manifest](.ned3/resource-manifest-v0.1.json).
+
 **Docs:** https://uark-ned3.github.io/CFDTwin/
 
 **GUI walkthrough (3-part video series):**

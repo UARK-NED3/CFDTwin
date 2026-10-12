@@ -1,0 +1,11 @@
+{
+  "manifest_version": "0.1.0",
+  "resource": {"id": "cfdtwin", "name": "CFDTwin", "kind": "software", "visibility": "public"},
+  "canonical_repository": {"url": "https://github.com/UARK-NED3/CFDTwin", "default_branch": "master", "reference": "38869d8de8b99e08aac3c536f0eee7cb5e35968d", "accessed_on": "2026-10-12"},
+  "lifecycle": {"status": "maintained_release", "maintainer_review": "pending"},
+  "intended_use": {"users": ["researchers and engineers building surrogates from configured ANSYS Fluent studies"], "supported_tasks": ["generate a CFD design of experiments", "run configured Fluent simulations", "train and inspect surrogate models"], "not_intended_for": ["an accuracy claim outside the documented geometry, physics, mesh, solver settings, output definitions, and design space"]},
+  "interfaces": {"required_inputs": ["ANSYS Fluent case", "declared input and output variables", "DOE bounds", "solver configuration"], "outputs": ["simulation database", "trained surrogate", "error metrics", "predictions within a declared design space"], "execution": "documented_local"},
+  "evidence": {"ceiling": "model_evaluation_required", "validation_status": "requires_case_specific_evaluation", "limitations": ["A trained surrogate requires case-specific evaluation and does not establish extrapolation accuracy.", "The workflow requires a working ANSYS Fluent installation and case-specific solver configuration."]},
+  "reuse": {"software_license": "declared", "data_rights": "not_included", "citation": "repository_or_release"},
+  "links": {"documentation": "https://uark-ned3.github.io/CFDTwin/", "issues": "https://github.com/UARK-NED3/CFDTwin/issues"}
+}
